@@ -37,3 +37,30 @@ export function setApiKey(key: string) {
 export function setBotUrl(url: string) {
   localStorage.setItem("sn_bot_url", url);
 }
+
+export async function exportConfig(): Promise<void> {
+  const BASE = localStorage.getItem("sn_bot_url") ?? "";
+  const key = localStorage.getItem("sn_api_key") ?? "";
+  const res = await fetch(`${BASE}/api/config/export`, {
+    headers: { "X-API-Key": key },
+  });
+  if (!res.ok) throw new Error("Export fehlgeschlagen");
+  const blob = await res.blob();
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement("a");
+  a.href = url;
+  a.download = "stream-notify-config.json";
+  a.click();
+  URL.revokeObjectURL(url);
+}
+
+export async function importConfig(json: string): Promise<void> {
+  const BASE = localStorage.getItem("sn_bot_url") ?? "";
+  const key = localStorage.getItem("sn_api_key") ?? "";
+  const res = await fetch(`${BASE}/api/config/import`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json", "X-API-Key": key },
+    body: json,
+  });
+  if (!res.ok) throw new Error("Import fehlgeschlagen");
+}

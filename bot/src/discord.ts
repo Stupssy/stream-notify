@@ -33,7 +33,11 @@ export async function getMemberByTwitchUsername(twitchUsername: string): Promise
   return members?.[0]?.user?.id ?? null;
 }
 
-export async function sendNotification(stream: StreamInfo, twitchUsername: string): Promise<boolean> {
+export async function sendNotification(
+  stream: StreamInfo,
+  twitchUsername: string,
+  twitchAvatarUrl?: string
+): Promise<boolean> {
   const { discordChannelId, notifyMessage, embedColor, embedTitle, discordNotifyRoleId } = getConfig();
   if (!discordChannelId) return false;
 
@@ -44,24 +48,54 @@ export async function sendNotification(stream: StreamInfo, twitchUsername: strin
     .replace("{viewers}", String(stream.viewerCount ?? 0));
 
   const color = parseInt(embedColor.replace("#", ""), 16);
-  const rolePing = discordNotifyRoleId ? `<@&${discordNotifyRoleId}> ` : "";
+  const rolePing = discordNotifyRoleId ? `<@&${discordNotifyRoleId}>` : "";
+  const streamUrl = `https://twitch.tv/${twitchUsername}`;
+
+  // Thumbnail: small image top-right in embed
+  const thumbnail = twitchAvatarUrl ? { url: twitchAvatarUrl } : undefined;
+
+  // Large preview image at bottom
+  const image = stream.thumbnailUrl
+    ? { url: stream.thumbnailUrl + `?t=${Date.now()}` }
+    : undefined;
 
   const payload = {
-    content: rolePing + fill(notifyMessage),
+    content: rolePing ? `${rolePing} ${fill(notifyMessage)}` : fill(notifyMessage),
     allowed_mentions: discordNotifyRoleId
       ? { roles: [discordNotifyRoleId] }
       : { parse: [] },
     embeds: [{
+      // Author line: "Username is now live on Twitch!" with avatar
+      author: {
+        name: `${twitchUsername} ist jetzt live auf Twitch!`,
+        url: streamUrl,
+        icon_url: twitchAvatarUrl,
+      },
       title: fill(embedTitle),
-      url: `https://twitch.tv/${twitchUsername}`,
+      url: streamUrl,
       color,
-      description: stream.title,
+      // Stream title as description
+      description: stream.title
+        ? `[${stream.title}](${streamUrl})`
+        : undefined,
+      thumbnail,
       fields: [
-        { name: "🎮 Spiel", value: stream.gameName ?? "Unbekannt", inline: true },
-        { name: "👥 Zuschauer", value: String(stream.viewerCount ?? 0), inline: true },
+        {
+          name: "Game",
+          value: stream.gameName ?? "Unbekannt",
+          inline: true,
+        },
+        {
+          name: "Viewers",
+          value: String(stream.viewerCount ?? 0),
+          inline: true,
+        },
       ],
-      image: stream.thumbnailUrl ? { url: stream.thumbnailUrl + `?t=${Date.now()}` } : undefined,
-      footer: { text: "stream-notify" },
+      image,
+      footer: {
+        text: "stream-notify",
+        icon_url: "https://static.twitchscdn.net/assets/favicon-32-e29e246c157142c1.png",
+      },
       timestamp: new Date().toISOString(),
     }],
   };

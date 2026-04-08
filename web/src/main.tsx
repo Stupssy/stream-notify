@@ -139,6 +139,8 @@ const css = `
     50% { opacity: 1; }
   }
 
+  .header-actions { display: flex; gap: 6px; }
+
   .card-header {
     display: flex;
     align-items: center;

@@ -1,5 +1,5 @@
 import { getConfig } from "./config";
-import { getStreamStatus, type StreamInfo } from "./twitch";
+import { getStreamStatus, getUserInfo, type StreamInfo } from "./twitch";
 import { sendNotification } from "./discord";
 
 export interface BotStatus {
@@ -15,6 +15,7 @@ export interface BotStatus {
 let interval: Timer | null = null;
 let wasLive = false;
 let startTime = Date.now();
+let cachedAvatarUrl: string | undefined;
 
 export const status: BotStatus = {
   running: false,
@@ -41,10 +42,19 @@ async function tick() {
     status.lastError = null;
     status.uptime = Math.floor((Date.now() - startTime) / 1000);
 
-    // Went live → send notification
+    // Went live → fetch avatar once, then send notification
     if (stream.isLive && !wasLive) {
       console.log(`[bot] ${config.twitchUsername} went live! Sending notification...`);
-      const sent = await sendNotification(stream, config.twitchUsername);
+
+      // Fetch avatar if not cached
+      if (!cachedAvatarUrl) {
+        try {
+          const user = await getUserInfo(config.twitchUsername);
+          cachedAvatarUrl = user?.profile_image_url;
+        } catch {}
+      }
+
+      const sent = await sendNotification(stream, config.twitchUsername, cachedAvatarUrl);
       if (sent) {
         status.notificationsSent++;
         console.log(`[bot] Notification sent ✓`);
@@ -66,8 +76,9 @@ export function startBot() {
   status.running = true;
   startTime = Date.now();
   wasLive = false;
+  cachedAvatarUrl = undefined;
   console.log(`[bot] Starting, polling every ${config.pollIntervalSeconds}s`);
-  tick(); // immediate first check
+  tick();
   interval = setInterval(tick, config.pollIntervalSeconds * 1000);
 }
 
