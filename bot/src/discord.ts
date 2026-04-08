@@ -12,7 +12,7 @@ function headers() {
 
 export async function hasMemberRole(userId: string): Promise<boolean> {
   const { discordGuildId, discordStreamerRoleId } = getConfig();
-  if (!discordStreamerRoleId) return true; // no role filter = notify everyone
+  if (!discordStreamerRoleId) return true;
 
   const res = await fetch(`${BASE}/guilds/${discordGuildId}/members/${userId}`, {
     headers: headers(),
@@ -23,7 +23,6 @@ export async function hasMemberRole(userId: string): Promise<boolean> {
 }
 
 export async function getMemberByTwitchUsername(twitchUsername: string): Promise<string | null> {
-  // Search guild members for someone whose nickname/username matches
   const { discordGuildId } = getConfig();
   const res = await fetch(
     `${BASE}/guilds/${discordGuildId}/members/search?query=${twitchUsername}&limit=5`,
@@ -35,7 +34,7 @@ export async function getMemberByTwitchUsername(twitchUsername: string): Promise
 }
 
 export async function sendNotification(stream: StreamInfo, twitchUsername: string): Promise<boolean> {
-  const { discordChannelId, notifyMessage, embedColor, embedTitle } = getConfig();
+  const { discordChannelId, notifyMessage, embedColor, embedTitle, discordNotifyRoleId } = getConfig();
   if (!discordChannelId) return false;
 
   const fill = (s: string) => s
@@ -45,9 +44,13 @@ export async function sendNotification(stream: StreamInfo, twitchUsername: strin
     .replace("{viewers}", String(stream.viewerCount ?? 0));
 
   const color = parseInt(embedColor.replace("#", ""), 16);
+  const rolePing = discordNotifyRoleId ? `<@&${discordNotifyRoleId}> ` : "";
 
   const payload = {
-    content: fill(notifyMessage),
+    content: rolePing + fill(notifyMessage),
+    allowed_mentions: discordNotifyRoleId
+      ? { roles: [discordNotifyRoleId] }
+      : { parse: [] },
     embeds: [{
       title: fill(embedTitle),
       url: `https://twitch.tv/${twitchUsername}`,

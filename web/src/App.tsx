@@ -20,6 +20,7 @@ interface Config {
   discordGuildId: string;
   discordChannelId: string;
   discordStreamerRoleId: string;
+  discordNotifyRoleId: string;
   twitchClientId: string;
   twitchClientSecret: string;
   twitchUsername: string;
@@ -212,6 +213,7 @@ function ConfigForm({ onSaved }: { onSaved: () => void }) {
           <Field label="Bot Token" value={config.discordBotToken ?? ""} onChange={(v) => update("discordBotToken", v)} type="password" placeholder="Bot Token aus Developer Portal" />
           <Field label="Server (Guild) ID" value={config.discordGuildId ?? ""} onChange={(v) => update("discordGuildId", v)} placeholder="123456789" />
           <Field label="Channel ID" value={config.discordChannelId ?? ""} onChange={(v) => update("discordChannelId", v)} placeholder="Notification Channel ID" />
+          <Field label="Ping Rollen-ID (optional)" value={config.discordNotifyRoleId ?? ""} onChange={(v) => update("discordNotifyRoleId", v)} placeholder="Rolle die gepingt wird (leer = kein Ping)" />
           <Field label="Streamer Rollen-ID (optional)" value={config.discordStreamerRoleId ?? ""} onChange={(v) => update("discordStreamerRoleId", v)} placeholder="Leer lassen = kein Filter" />
           <ValidateBtn label="Discord testen" action={() => botApi.validateDiscord()} />
         </>}

@@ -7,7 +7,8 @@ export interface Config {
   discordBotToken: string;
   discordGuildId: string;
   discordChannelId: string;
-  discordStreamerRoleId: string;
+  discordStreamerRoleId: string;  // filter: only notify if streamer has this role
+  discordNotifyRoleId: string;    // ping: mention this role in the notification
   // Twitch
   twitchClientId: string;
   twitchClientSecret: string;
@@ -28,6 +29,7 @@ const defaults: Config = {
   discordGuildId: "",
   discordChannelId: "",
   discordStreamerRoleId: "",
+  discordNotifyRoleId: "",
   twitchClientId: "",
   twitchClientSecret: "",
   twitchUsername: "",
@@ -36,7 +38,8 @@ const defaults: Config = {
   embedTitle: "{username} streamt jetzt!",
   pollIntervalSeconds: 60,
   enabled: false,
-  apiKey: crypto.randomUUID(),
+  // API key: use env var if set (survives redeploys), otherwise generate once
+  apiKey: process.env.API_KEY ?? crypto.randomUUID(),
 };
 
 let _config: Config = { ...defaults };
@@ -47,6 +50,8 @@ export function loadConfig(): Config {
     if (file.size > 0) {
       const raw = JSON.parse(Bun.readFileSync(CONFIG_PATH).toString());
       _config = { ...defaults, ...raw };
+      // Always prefer env var for API key
+      if (process.env.API_KEY) _config.apiKey = process.env.API_KEY;
     }
   } catch {
     saveConfig(_config);
@@ -60,6 +65,8 @@ export function getConfig(): Config {
 
 export function saveConfig(config: Partial<Config>): Config {
   _config = { ..._config, ...config };
+  // Never overwrite API key from env var
+  if (process.env.API_KEY) _config.apiKey = process.env.API_KEY;
   Bun.write(CONFIG_PATH, JSON.stringify(_config, null, 2));
   return _config;
 }
