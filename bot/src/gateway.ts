@@ -19,7 +19,7 @@ export async function startGateway(): Promise<void> {
     intents: [GatewayIntentBits.Guilds],
   });
 
-  client.once("ready", (c) => {
+  client.once("clientReady", (c) => {
     console.log(`[gateway] Logged in as ${c.user.tag} ✓`);
     c.user.setPresence({
       status: "online",
