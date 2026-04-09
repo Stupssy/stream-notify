@@ -2,14 +2,12 @@ import { Elysia } from "elysia";
 import { getConfig, saveConfig } from "./config";
 import { status, startBot, stopBot, restartBot } from "./bot";
 import { validateBotToken } from "./discord";
+import { restartGateway } from "./gateway";
 import { getStreamStatus, getUserInfo } from "./twitch";
 
 function authCheck(apiKey: string | undefined): boolean {
   return apiKey === getConfig().apiKey;
 }
-
-// Fields that are safe to export (secrets masked for display, but full value for import)
-const SECRET_FIELDS = ["discordBotToken", "twitchClientSecret"];
 
 export function createServer() {
   const app = new Elysia()
@@ -30,21 +28,34 @@ export function createServer() {
       version: "1.0.0",
     }))
 
-    // Config GET (secrets partially masked for display)
+    // Config GET — secrets masked for display only, marked with __masked flag
     .get("/api/config", ({ headers }) => {
       if (!authCheck(headers["x-api-key"])) return new Response("Unauthorized", { status: 401 });
-      const config = { ...getConfig() };
-      if (config.discordBotToken) config.discordBotToken = config.discordBotToken.slice(0, 10) + "...";
-      if (config.twitchClientSecret) config.twitchClientSecret = "***";
+      const config = { ...getConfig() } as any;
+      // Replace secrets with placeholder — WebUI must NOT send these back
+      config.discordBotToken = config.discordBotToken ? "__masked__" : "";
+      config.twitchClientSecret = config.twitchClientSecret ? "__masked__" : "";
       return config;
     })
 
-    // Config EXPORT — full values, for backup/import (still auth protected)
+    // Config UPDATE — skips masked fields so real secrets are never overwritten
+    .post("/api/config", ({ headers, body }) => {
+      if (!authCheck(headers["x-api-key"])) return new Response("Unauthorized", { status: 401 });
+      const incoming = body as Record<string, any>;
+      // Strip out masked placeholders — keep existing values
+      if (incoming.discordBotToken === "__masked__") delete incoming.discordBotToken;
+      if (incoming.twitchClientSecret === "__masked__") delete incoming.twitchClientSecret;
+      saveConfig(incoming);
+      restartBot();
+      restartGateway();
+      return { ok: true, message: "Config saved & bot restarted" };
+    })
+
+    // Config EXPORT — full unmasked values
     .get("/api/config/export", ({ headers }) => {
       if (!authCheck(headers["x-api-key"])) return new Response("Unauthorized", { status: 401 });
-      const config = { ...getConfig() };
-      // Remove apiKey from export — shouldn't be portable
-      delete (config as any).apiKey;
+      const config = { ...getConfig() } as any;
+      delete config.apiKey;
       return new Response(JSON.stringify(config, null, 2), {
         headers: {
           "Content-Type": "application/json",
@@ -53,26 +64,19 @@ export function createServer() {
       });
     })
 
-    // Config IMPORT — accepts full config JSON
+    // Config IMPORT
     .post("/api/config/import", ({ headers, body }) => {
       if (!authCheck(headers["x-api-key"])) return new Response("Unauthorized", { status: 401 });
       try {
         const imported = body as any;
-        // Never import apiKey
         delete imported.apiKey;
         saveConfig(imported);
         restartBot();
+        restartGateway();
         return { ok: true, message: "Config importiert & Bot neugestartet" };
       } catch (e: any) {
         return new Response(JSON.stringify({ ok: false, error: e.message }), { status: 400 });
       }
-    })
-
-    .post("/api/config", ({ headers, body }) => {
-      if (!authCheck(headers["x-api-key"])) return new Response("Unauthorized", { status: 401 });
-      saveConfig(body as any);
-      restartBot();
-      return { ok: true, message: "Config saved & bot restarted" };
     })
 
     .post("/api/bot/start", ({ headers }) => {
