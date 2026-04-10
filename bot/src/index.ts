@@ -2,6 +2,7 @@ import { loadConfig, getConfig } from "./config";
 import { startBot } from "./bot";
 import { startGateway } from "./gateway";
 import { createServer } from "./server";
+import { getAllTwitchUsernames } from "./users";
 
 console.log("╔════════════════════════════╗");
 console.log("║     stream-notify bot      ║");
@@ -50,9 +51,11 @@ if (config.discordBotToken) {
 }
 
 // ── Auto-start polling bot ─────────────────────────────────────────────────────
-if (config.enabled && config.twitchUsername && config.twitchClientId) {
-  console.log(`[init] Auto-starting bot for @${config.twitchUsername}`);
+const { enabled } = config;
+const twitchUsernames = getAllTwitchUsernames();
+if (enabled && twitchUsernames.length > 0) {
+  console.log(`[init] Auto-starting bot for ${twitchUsernames.length} user(s): ${twitchUsernames.join(", ")}`);
   startBot();
 } else {
-  console.log("[init] Bot not started — configure via WebUI");
+  console.log("[init] Bot not started — configure via WebUI or /setup in Discord");
 }

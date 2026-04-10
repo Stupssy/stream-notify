@@ -1,6 +1,24 @@
 import { join } from "path";
 
-const CONFIG_PATH = join(import.meta.dir, "../config.json");
+/**
+ * Persistent storage directory.
+ * On Render: set DATA_DIR env var to your mounted disk path (e.g. "/data").
+ * Local dev fallbacks to project directory.
+ */
+const DATA_DIR = process.env.DATA_DIR ?? join(import.meta.dir, "..");
+const CONFIG_PATH = join(DATA_DIR, "config.json");
+
+/** Ensure the persistent data directory exists */
+function ensureDataDir() {
+  try {
+    if (!Bun.file(DATA_DIR).existsSync()) {
+      Bun.mkdirSync(DATA_DIR, { recursive: true });
+    }
+  } catch (e: any) {
+    console.warn(`[config] Could not create data directory ${DATA_DIR}: ${e.message}`);
+  }
+}
+ensureDataDir();
 
 export interface Config {
   // Discord

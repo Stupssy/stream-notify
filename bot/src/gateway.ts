@@ -1,5 +1,6 @@
-import { Client, GatewayIntentBits, ActivityType } from "discord.js";
+import { Client, GatewayIntentBits, ActivityType, Events } from "discord.js";
 import { getConfig } from "./config";
+import { registerCommands, handleInteraction } from "./commands";
 
 let client: Client | null = null;
 
@@ -19,12 +20,20 @@ export async function startGateway(): Promise<void> {
     intents: [GatewayIntentBits.Guilds],
   });
 
-  client.once("clientReady", (c) => {
+  client.once("clientReady", async (c) => {
     console.log(`[gateway] Logged in as ${c.user.tag} ✓`);
     c.user.setPresence({
       status: "online",
       activities: [{ name: "Twitch 👁", type: ActivityType.Watching }],
     });
+
+    // Register slash commands once on startup
+    await registerCommands();
+  });
+
+  client.on(Events.InteractionCreate, async (interaction) => {
+    if (!interaction.isChatInputCommand()) return;
+    await handleInteraction(interaction);
   });
 
   client.on("error", (err) => {

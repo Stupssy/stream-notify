@@ -1,6 +1,13 @@
 # stream-notify
 
-Custom Streamcord-Alternative: Twitch Live → Discord Notification mit WebUI.
+Custom Streamcord-Alternative: Twitch Live → Discord Notifications via Discord Slash Commands & WebUI.
+
+## Features
+
+- **Multi-User Support** — Beliebige Streamer über Discord `/setup` Befehl hinzufügen
+- **Persistent Storage** — Daten überleben Redeploys via Render Persistent Disk
+- **WebUI** — Zentrale Konfiguration für Discord & Twitch API
+- **Auto-Updating Embeds** — Viewer-Count & Titel aktualisieren sich live
 
 ## Struktur
 
@@ -14,7 +21,16 @@ stream-notify/
 
 ## Render Setup
 
-### 1. Bot (Web Service)
+### 1. Persistent Disk erstellen
+| Feld | Wert |
+|---|---|
+| Name | z.B. `stream-notify-data` |
+| Mount Path | `/data` |
+| Größe | 1 GB (Free Tier) |
+
+> **Wichtig:** Das Disk speichert `config.json` und `users.json`. Ohne Persistent Disk gehen alle Einstellungen nach einem Redeploy verloren.
+
+### 2. Bot (Web Service)
 | Feld | Wert |
 |---|---|
 | Root Directory | `bot` |
@@ -26,21 +42,20 @@ stream-notify/
 | Key | Required | Zweck |
 |---|---|---|
 | `API_KEY` | **Ja** | Authentifizierung zwischen WebUI und Bot |
+| `DATA_DIR` | **Ja** | `/data` — Pfad zum Persistent Disk |
 | `PUBLIC_URL` | Empfohlen | `https://dein-bot.onrender.com` — verhindert Spin-Down |
 | `DISCORD_BOT_TOKEN` | Nein | Discord Bot Token (kann auch über WebUI gesetzt werden) |
 | `TWITCH_CLIENT_ID` | Nein | Twitch API Client ID (kann auch über WebUI gesetzt werden) |
 | `TWITCH_CLIENT_SECRET` | Nein | Twitch API Secret (kann auch über WebUI gesetzt werden) |
-| `TWITCH_USERNAME` | Nein | Twitch-Kanalname (kann auch über WebUI gesetzt werden) |
 | `DISCORD_GUILD_ID` | Nein | Discord Server ID (kann auch über WebUI gesetzt werden) |
-| `DISCORD_CHANNEL_ID` | Nein | Discord Channel ID (kann auch über WebUI gesetzt werden) |
+| `DISCORD_CHANNEL_ID` | Nein | Discord Channel ID für Notifications (kann auch über WebUI gesetzt werden) |
 | `DISCORD_NOTIFY_ROLE_ID` | Nein | Rolle die bei Go-Live gepingt wird (kann auch über WebUI gesetzt werden) |
-| `DISCORD_STREAMER_ROLE_ID` | Nein | Streamer-Rolle als Filter (kann auch über WebUI gesetzt werden) |
+| `DISCORD_STREAMER_ROLE_ID` | Nein | Rolle die Nutzern via `/setup` zugewiesen wird (kann auch über WebUI gesetzt werden) |
 
-> **Hinweis:** Nur `API_KEY` ist zwingend erforderlich. Alle Discord/Twitch Settings können
-> alternativ über die WebUI konfiguriert und gespeichert werden.
-> Environment Variables haben **immer Vorrang** vor `config.json` und überleben Redeploys.
+> **Hinweis:** Nur `API_KEY` und `DATA_DIR` sind zwingend erforderlich.
+> Environment Variables haben **immer Vorrang** vor den Dateien auf dem Persistent Disk.
 
-### 2. WebUI (Static Site)
+### 3. WebUI (Static Site)
 | Feld | Wert |
 |---|---|
 | Root Directory | `web` |
@@ -56,13 +71,36 @@ stream-notify/
 
 ## Erster Start
 
-1. Bot deployen → Render Dashboard → **Environment** → `API_KEY` + `PUBLIC_URL` setzen → Redeploy
-2. WebUI öffnen (`https://dein-web.onrender.com`)
-3. Bot URL + API Key eingeben → Connect (wird im Browser gespeichert)
-4. Twitch & Discord konfigurieren → Speichern → Bot starten
+1. **Persistent Disk** erstellen → Mount Path `/data` notieren
+2. Bot deployen → Render Dashboard → **Environment** → `API_KEY` + `DATA_DIR=/data` + `PUBLIC_URL` setzen → Redeploy
+3. WebUI öffnen (`https://dein-web.onrender.com`)
+4. Bot URL + API Key eingeben → Connect
+5. Discord & Twitch konfigurieren → Speichern → Bot starten
 
-> **Tipp:** Der API Key und die Bot URL werden nach dem ersten Connect im Browser gespeichert.  
-> Bei späteren Besuchen musst du sie nicht erneut eingeben.
+> **Tipp:** Der API Key und die Bot URL werden nach dem ersten Connect im Browser gespeichert.
+
+---
+
+## Discord Slash Commands
+
+Nachdem der Bot auf dem Server ist, stehen folgende Befehle zur Verfügung:
+
+### Für alle Nutzer
+
+| Befehl | Beschreibung |
+|---|---|
+| `/setup twitch <username>` | Twitch-Username speichern + Streamer-Rolle zuweisen |
+| `/setup remove` | Eigene Konfiguration löschen + Rolle entfernen |
+| `/setup list` | Eigenen konfigurierten Twitch-Username anzeigen |
+
+### Für Admins (Manage Roles Permission)
+
+| Befehl | Beschreibung |
+|---|---|
+| `/admin list-all` | Alle konfigurierten Nutzer auflisten |
+| `/admin remove-user @user` | Konfiguration eines Nutzers löschen |
+
+> **Ablauf:** Jeder Nutzer führt `/setup twitch ihrname` aus. Der Bot speichert die Zuordnung persistent auf dem Disk und weist automatisch die `DISCORD_STREAMER_ROLE_ID` zu. Ab dann wird der Kanal auf Live-Status überwacht.
 
 ---
 
@@ -72,7 +110,7 @@ stream-notify/
 2. Linkes Menü → **Bot** → Token kopieren
 3. Linkes Menü → **OAuth2 → URL Generator**
    - Scopes: `bot`
-   - Permissions: `Send Messages`, `Embed Links`, `Mention Everyone` (für Rollen-Ping)
+   - Permissions: `Send Messages`, `Embed Links`, `Mention Everyone`, `Manage Roles`
 4. Generierten Link öffnen → Bot in Server einladen
 
 ---
@@ -91,13 +129,6 @@ stream-notify/
 
 ## WebUI Felder erklärt
 
-### Twitch Tab
-| Feld | Beschreibung |
-|---|---|
-| Twitch Username | Dein Twitch-Kanalname (z.B. `stupssy`) |
-| Client ID | Von dev.twitch.tv |
-| Client Secret | Von dev.twitch.tv (einmalig sichtbar!) |
-
 ### Discord Tab
 | Feld | Beschreibung |
 |---|---|
@@ -105,7 +136,7 @@ stream-notify/
 | Server (Guild) ID | Rechtsklick auf Server → ID kopieren |
 | Channel ID | Rechtsklick auf Channel → ID kopieren |
 | Ping Rollen-ID | Rolle die bei Go-Live gepingt wird (leer = kein Ping) |
-| Streamer Rollen-ID | Filter: nur notifizieren wenn Streamer diese Rolle hat (leer = immer) |
+| Streamer Rollen-ID | Rolle die via `/setup twitch` zugewiesen wird |
 
 ### Notification Tab
 | Feld | Beschreibung |
@@ -118,6 +149,7 @@ stream-notify/
 | Feld | Beschreibung |
 |---|---|
 | Poll Interval | Wie oft Twitch gecheckt wird (Sekunden, min. 30 empfohlen) |
+| Update Interval | Wie oft das Embed aktualisiert wird (Minuten) |
 | Bot aktiviert | An/Aus Toggle |
 
 ---
@@ -127,3 +159,14 @@ stream-notify/
 Discord Entwicklermodus aktivieren: **Einstellungen → Erweitert → Entwicklermodus → AN**
 
 Dann Rechtsklick auf Server / Channel / Rolle → **ID kopieren**
+
+---
+
+## Persistent Storage
+
+| Datei | Speicherort | Inhalt |
+|---|---|---|
+| `config.json` | `$DATA_DIR/config.json` | Discord/Twitch Settings aus der WebUI |
+| `users.json` | `$DATA_DIR/users.json` | Discord User ID → Twitch Username Mappings |
+
+Beide Dateien liegen auf dem gemounteten Persistent Disk und überleben Redeploys & Spin-Downs.
