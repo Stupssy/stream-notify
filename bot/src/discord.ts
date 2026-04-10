@@ -13,7 +13,6 @@ function headers() {
 export async function hasMemberRole(userId: string): Promise<boolean> {
   const { discordGuildId, discordStreamerRoleId } = getConfig();
   if (!discordStreamerRoleId) return true;
-
   const res = await fetch(`${BASE}/guilds/${discordGuildId}/members/${userId}`, {
     headers: headers(),
   });
@@ -33,6 +32,18 @@ export async function getMemberByTwitchUsername(twitchUsername: string): Promise
   return members?.[0]?.user?.id ?? null;
 }
 
+/**
+ * Embed layout (von oben nach unten):
+ *
+ * [content]    →  nur <@&RollenID> Ping (kein Text)
+ *
+ * author       →  Avatar + "stupssy" + Link
+ * title        →  konfigurierbarer embedTitle
+ * description  →  konfigurierbarer notifyMessage-Text
+ * fields       →  Spiel | Zuschauer, dann Titel (volle Breite)
+ * image        →  Stream-Thumbnail (groß)
+ * footer       →  "stream-notify" + Timestamp
+ */
 function buildEmbed(
   stream: StreamInfo,
   twitchUsername: string,
@@ -43,41 +54,40 @@ function buildEmbed(
 
   const fill = (s: string) =>
     s
-      .replace("{username}", twitchUsername)
-      .replace("{title}", stream.title ?? "")
-      .replace("{game}", stream.gameName ?? "")
-      .replace("{viewers}", String(stream.viewerCount ?? 0));
+      .replace(/\{username\}/g, twitchUsername)
+      .replace(/\{title\}/g, stream.title ?? "")
+      .replace(/\{game\}/g, stream.gameName ?? "")
+      .replace(/\{viewers\}/g, String(stream.viewerCount ?? 0));
 
   const color = parseInt(embedColor.replace("#", ""), 16);
   const streamUrl = `https://twitch.tv/${twitchUsername}`;
-  const thumbnail = twitchAvatarUrl ? { url: twitchAvatarUrl } : undefined;
+
   const image = stream.thumbnailUrl
-    ? { url: stream.thumbnailUrl + `?t=${Date.now()}` }
+    ? { url: `${stream.thumbnailUrl}?t=${Date.now()}` }
     : undefined;
 
-  return {
-    content: discordNotifyRoleId
-      ? `<@&${discordNotifyRoleId}> ${fill(notifyMessage)}`
-      : fill(notifyMessage),
+  const fields = [
+    { name: "📺 Spiel", value: stream.gameName || "Unbekannt", inline: true },
+    { name: "👥 Zuschauer", value: String(stream.viewerCount ?? 0), inline: true },
+    ...(stream.title ? [{ name: "🎬 Titel", value: stream.title, inline: false }] : []),
+  ];
+
+  const payload: Record<string, unknown> = {
     allowed_mentions: discordNotifyRoleId
       ? { roles: [discordNotifyRoleId] }
       : { parse: [] },
     embeds: [
       {
         author: {
-          name: `${twitchUsername} ist jetzt live auf Twitch!`,
+          name: twitchUsername,
           url: streamUrl,
-          icon_url: twitchAvatarUrl,
+          icon_url: twitchAvatarUrl ?? null,
         },
         title: fill(embedTitle),
         url: streamUrl,
         color,
-        description: stream.title ? `[${stream.title}](${streamUrl})` : undefined,
-        thumbnail,
-        fields: [
-          { name: "Game", value: stream.gameName ?? "Unbekannt", inline: true },
-          { name: "Viewers", value: String(stream.viewerCount ?? 0), inline: true },
-        ],
+        description: fill(notifyMessage),
+        fields,
         image,
         footer: {
           text: "stream-notify",
@@ -87,10 +97,13 @@ function buildEmbed(
       },
     ],
   };
+
+  if (discordNotifyRoleId) payload.content = `<@&${discordNotifyRoleId}>`;
+  return payload;
 }
 
 /**
- * Send a new notification. Returns the Discord message ID (for later edits) or null on failure.
+ * Send a new notification. Returns Discord message ID for later edits, or null on failure.
  */
 export async function sendNotification(
   stream: StreamInfo,
@@ -101,7 +114,6 @@ export async function sendNotification(
   if (!config.discordChannelId) return null;
 
   const payload = buildEmbed(stream, twitchUsername, twitchAvatarUrl, config);
-
   const res = await fetch(`${BASE}/channels/${config.discordChannelId}/messages`, {
     method: "POST",
     headers: headers(),
@@ -119,8 +131,8 @@ export async function sendNotification(
 }
 
 /**
- * Edit an existing notification with fresh stream data (viewer count, title, game, thumbnail).
- * Keeps the original role-ping content unchanged — only the embed is updated.
+ * Edit an existing notification with fresh stream data.
+ * No re-ping — only the embed is patched.
  */
 export async function updateNotification(
   messageId: string,
@@ -131,19 +143,15 @@ export async function updateNotification(
   const config = getConfig();
   if (!config.discordChannelId) return false;
 
-  // Build the same embed but skip re-pinging the role (edit = no new ping)
   const configNoPing = { ...config, discordNotifyRoleId: "" };
   const payload = buildEmbed(stream, twitchUsername, twitchAvatarUrl, configNoPing);
-
-  // On edits we don't re-send the content/ping — only update the embed
-  const editPayload = { embeds: payload.embeds };
 
   const res = await fetch(
     `${BASE}/channels/${config.discordChannelId}/messages/${messageId}`,
     {
       method: "PATCH",
       headers: headers(),
-      body: JSON.stringify(editPayload),
+      body: JSON.stringify({ embeds: payload.embeds }),
     }
   );
 
