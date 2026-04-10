@@ -5,7 +5,7 @@ Custom Streamcord-Alternative: Twitch Live → Discord Notifications via Discord
 ## Features
 
 - **Multi-User Support** — Beliebige Streamer über Discord `/setup` Befehl hinzufügen
-- **Persistent Storage** — Daten überleben Redeploys via Render Persistent Disk
+- **PostgreSQL Storage** — Daten überleben Redeploys via Render Free PostgreSQL Database
 - **WebUI** — Zentrale Konfiguration für Discord & Twitch API
 - **Auto-Updating Embeds** — Viewer-Count & Titel aktualisieren sich live
 
@@ -32,7 +32,7 @@ stream-notify/
 
 ### 2. Deployen
 
-→ Siehe **[SETUP.md](SETUP.md)** für die vollständige Anleitung (Discord Bot, Twitch App, Render, Datenbank, WebUI).
+→ Siehe **[SETUP.md](SETUP.md)** für die vollständige Anleitung (Discord Bot, Twitch App, Render, PostgreSQL, WebUI).
 
 ---
 
@@ -55,7 +55,7 @@ Nachdem der Bot auf dem Server ist, stehen folgende Befehle zur Verfügung:
 | `/admin list-all` | Alle konfigurierten Nutzer auflisten |
 | `/admin remove-user @user` | Konfiguration eines Nutzers löschen |
 
-> **Ablauf:** Jeder Nutzer führt `/setup twitch ihrname` aus. Der Bot speichert die Zuordnung persistent auf dem Disk und weist automatisch die `DISCORD_STREAMER_ROLE_ID` zu. Ab dann wird der Kanal auf Live-Status überwacht.
+> **Ablauf:** Jeder Nutzer führt `/setup twitch ihrname` aus. Der Bot speichert die Zuordnung persistent in der PostgreSQL-Datenbank und weist automatisch die `DISCORD_STREAMER_ROLE_ID` zu. Ab dann wird der Kanal auf Live-Status überwacht.
 
 ---
 
@@ -119,9 +119,9 @@ Dann Rechtsklick auf Server / Channel / Rolle → **ID kopieren**
 
 ## Persistent Storage
 
-| Datei | Speicherort | Inhalt |
+| Daten | Speicherort | Inhalt |
 |---|---|---|
-| `config.json` | `$DATA_DIR/config.json` | Discord/Twitch Settings aus der WebUI |
-| `users.json` | `$DATA_DIR/users.json` | Discord User ID → Twitch Username Mappings |
+| `app_config` Tabelle | Render PostgreSQL (Free, 1 GB) | Discord/Twitch Einstellungen aus der WebUI |
+| `users` Tabelle | Render PostgreSQL (Free, 1 GB) | Discord User ID → Twitch Username Mappings |
 
-Beide Dateien liegen auf dem gemounteten Persistent Disk und überleben Redeploys & Spin-Downs.
+Beide Tabellen liegen in der Render PostgreSQL-Datenbank und überleben Redeploys & Spin-Downs.

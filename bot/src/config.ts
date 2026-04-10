@@ -1,42 +1,4 @@
-import { join } from "path";
-import { existsSync, mkdirSync, writeFileSync, unlinkSync } from "fs";
-
-/**
- * Persistent storage directory.
- * On Render: set DATA_DIR env var to your mounted disk path (e.g. "/data").
- * Local dev fallbacks to project directory.
- */
-/**
- * Resolve a writable data directory.
- * Tries DATA_DIR env first, falls back to project dir, then /tmp.
- */
-function resolveDataDir(): string {
-  const candidates = [
-    process.env.DATA_DIR,                       // e.g. "/data" on Render with persistent disk
-    join(import.meta.dir, ".."),                // project directory (local dev)
-    "/tmp",                                     // last resort (ephemeral but writable)
-  ].filter(Boolean) as string[];
-
-  for (const dir of candidates) {
-    try {
-      if (!existsSync(dir)) mkdirSync(dir, { recursive: true });
-      // Verify it's actually writable
-      const testPath = join(dir, ".write_test_" + Date.now());
-      writeFileSync(testPath, "");
-      unlinkSync(testPath);
-      console.log(`[config] Data directory: ${dir}`);
-      return dir;
-    } catch (e: any) {
-      console.warn(`[config] Data directory ${dir} not writable: ${e.message}`);
-    }
-  }
-
-  // Should never reach here since /tmp is always writable
-  return "/tmp";
-}
-
-const DATA_DIR = resolveDataDir();
-const CONFIG_PATH = join(DATA_DIR, "config.json");
+import { getPool } from "./db";
 
 export interface Config {
   // Discord
@@ -80,7 +42,7 @@ const defaults: Config = {
 };
 
 // Secrets that can also be provided via environment variables.
-// Env vars take priority over config.json — they survive Render deploys.
+// Env vars take priority over DB — they survive Render deploys.
 const ENV_OVERRIDES: Partial<Record<keyof Config, string>> = {
   discordBotToken:    "DISCORD_BOT_TOKEN",
   twitchClientId:     "TWITCH_CLIENT_ID",
@@ -93,7 +55,12 @@ const ENV_OVERRIDES: Partial<Record<keyof Config, string>> = {
   apiKey:             "API_KEY",
 };
 
+// All non-string keys that need type coercion
+const NUMBER_KEYS: (keyof Config)[] = ["pollIntervalSeconds", "updateIntervalMinutes"];
+const BOOL_KEYS: (keyof Config)[] = ["enabled"];
+
 let _config: Config = { ...defaults };
+let _initialized = false;
 
 function applyEnvOverrides(cfg: Config): Config {
   for (const [key, envVar] of Object.entries(ENV_OVERRIDES)) {
@@ -103,51 +70,95 @@ function applyEnvOverrides(cfg: Config): Config {
   return cfg;
 }
 
-export function loadConfig(): Config {
+/**
+ * Load config from the database and merge into memory.
+ * Must be called once at startup (before any getConfig() calls).
+ */
+export async function initConfig(): Promise<Config> {
+  const pool = getPool();
+
   // Start from defaults
   _config = { ...defaults };
 
-  // Layer 1: config.json (if it exists and is readable)
+  // Load from DB
   try {
-    const file = Bun.file(CONFIG_PATH);
-    if (file.size > 0) {
-      const raw = JSON.parse(Bun.readFileSync(CONFIG_PATH).toString());
-      _config = { ..._config, ...raw };
+    const { rows } = await pool.query("SELECT key, value FROM app_config");
+    for (const row of rows) {
+      const key = row.key as keyof Config;
+      let value: any = row.value;
+
+      // Coerce types
+      if (NUMBER_KEYS.includes(key)) {
+        value = Number(value);
+        if (isNaN(value)) continue;
+      } else if (BOOL_KEYS.includes(key)) {
+        value = value === "true";
+      }
+
+      (_config as any)[key] = value;
     }
-  } catch {
-    // No config.json yet — that's fine, we write it below
-    saveConfig(_config);
+    console.log("[config] Loaded from database ✓");
+  } catch (e: any) {
+    console.error("[config] Failed to load config from DB:", e.message);
   }
 
-  // Layer 2: env vars always win (survive redeploys)
+  // Env vars always win
   applyEnvOverrides(_config);
+  _initialized = true;
 
   return _config;
 }
 
 export function getConfig(): Config {
+  if (!_initialized) {
+    // Fallback: return defaults if called before initConfig()
+    return { ...defaults };
+  }
   return _config;
 }
 
 /**
- * Save config to disk.
+ * Save config to the database (UPSERT per key).
  * - Never overwrites fields that have an env var set (those are always authoritative).
- * - Never stores the apiKey from a client call (it's always sourced from env/defaults).
+ * - Never stores the apiKey (it's always sourced from env/defaults).
  */
-export function saveConfig(incoming: Partial<Config>): Config {
+export async function saveConfig(incoming: Partial<Config>): Promise<Config> {
+  const pool = getPool();
+
   // Merge into current config
   _config = { ..._config, ...incoming };
 
   // Env vars always win — re-apply after merge
   applyEnvOverrides(_config);
 
-  // Persist to disk (without apiKey — that lives in env)
-  const toDisk = { ..._config } as any;
-  delete toDisk.apiKey;
+  // Persist to DB (without apiKey)
+  const toSave = { ..._config } as any;
+  delete toSave.apiKey;
+
   try {
-    Bun.write(CONFIG_PATH, JSON.stringify(toDisk, null, 2));
+    const values: string[] = [];
+    const queries: Promise<any>[] = [];
+
+    for (const [key, value] of Object.entries(toSave)) {
+      values.push(value != null ? String(value) : "");
+    }
+
+    // Build UPSERT queries
+    const keys = Object.keys(toSave) as (keyof Config)[];
+    for (let i = 0; i < keys.length; i++) {
+      const key = keys[i];
+      const value = toSave[key];
+      queries.push(
+        pool.query(
+          "INSERT INTO app_config (key, value) VALUES ($1, $2) ON CONFLICT (key) DO UPDATE SET value = $2",
+          [key, value != null ? String(value) : ""]
+        )
+      );
+    }
+
+    await Promise.all(queries);
   } catch (e: any) {
-    console.warn(`[config] Could not write config.json: ${e.message}`);
+    console.warn(`[config] Could not write config to DB: ${e.message}`);
   }
 
   return _config;

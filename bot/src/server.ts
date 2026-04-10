@@ -47,12 +47,12 @@ export function createServer() {
     })
 
     // Config UPDATE — skips masked fields, preserves wasLive across restart
-    .post("/api/config", ({ headers, body }) => {
+    .post("/api/config", async ({ headers, body }) => {
       if (!authCheck(headers["x-api-key"])) return new Response("Unauthorized", { status: 401 });
       const incoming = body as Record<string, any>;
       if (incoming.discordBotToken === "__masked__") delete incoming.discordBotToken;
       if (incoming.twitchClientSecret === "__masked__") delete incoming.twitchClientSecret;
-      saveConfig(incoming);
+      await saveConfig(incoming);
       restartBot();       // preserves wasLive — no duplicate notification
       restartGateway();
       return { ok: true, message: "Config saved & bot restarted" };
@@ -72,12 +72,12 @@ export function createServer() {
     })
 
     // Config IMPORT
-    .post("/api/config/import", ({ headers, body }) => {
+    .post("/api/config/import", async ({ headers, body }) => {
       if (!authCheck(headers["x-api-key"])) return new Response("Unauthorized", { status: 401 });
       try {
         const imported = body as any;
         delete imported.apiKey;
-        saveConfig(imported);
+        await saveConfig(imported);
         restartBot();
         restartGateway();
         return { ok: true, message: "Config importiert & Bot neugestartet" };

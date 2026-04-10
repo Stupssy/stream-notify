@@ -1,6 +1,6 @@
 # stream-notify — Komplettes Setup
 
-Schritt-für-Schritt-Anleitung für Discord Bot, Twitch API, Render Hosting, Persistent Storage und WebUI.
+Schritt-für-Schritt-Anleitung für Discord Bot, Twitch API, Render Hosting, PostgreSQL-Datenbank und WebUI.
 
 ---
 
@@ -10,7 +10,7 @@ Schritt-für-Schritt-Anleitung für Discord Bot, Twitch API, Render Hosting, Per
 |---|---|---|
 | **Bot** (Bun + Elysia API) | Render Web Service | Twitch-Checks, Discord-Nachrichten, REST-API |
 | **WebUI** (React + Vite) | Render Static Site | Konfigurationsoberfläche |
-| **Persistent Disk** | Render Volume | Speichert `config.json` und `users.json` |
+| **PostgreSQL** | Render Database (Free, 1 GB) | Speichert Config & User-Mappings persistent |
 | **Keepalive** | cron-job.org | Verhindert Render Spin-Down (Free Tier) |
 
 ---
@@ -74,20 +74,21 @@ Schritt-für-Schritt-Anleitung für Discord Bot, Twitch API, Render Hosting, Per
 
 ---
 
-## 3. Render — Persistent Disk erstellen
+## 3. Render — PostgreSQL Database erstellen
 
 1. **Render Dashboard** öffnen: https://dashboard.render.com
-2. **New → Persistent Disk**
+2. **New → PostgreSQL**
 3. Formular:
    | Feld | Wert |
    |---|---|
-   | Name | `stream-notify-data` |
+   | Name | `stream-notify-db` |
    | Region | Nächste zu dir (z.B. `Frankfurt`) |
-   | Mount Path | `/data` |
-   | Größe | `1 GB` (Free Tier) |
-4. **Create Disk** → **Mount Path notieren** (`/data`)
+   | Instance Type | **Free** (1 GB Storage) |
+4. **Create Database** → Erstellen dauert ca. 1-2 Minuten
+5. Nach dem Erstellen die **Connection-Parameter** notieren:
+   - **Internal Database URL** kopieren (Format: `postgresql://user:pass@internal-host:5432/db`)
 
-> **Wichtig:** Ohne Persistent Disk gehen alle Einstellungen (`config.json`, `users.json`) nach jedem Redeploy verloren.
+> **Wichtig:** Verwende die **Internal URL** — sie hat geringere Latenz und ist nicht öffentlich erreichbar. Beide Services (Bot + DB) müssen in der **gleichen Region** liegen.
 
 ---
 
@@ -101,7 +102,7 @@ Schritt-für-Schritt-Anleitung für Discord Bot, Twitch API, Render Hosting, Per
    | Feld | Wert |
    |---|---|
    | Name | `stream-notify-bot` |
-   | Region | Gleiche Region wie Persistent Disk |
+   | Region | Gleiche Region wie PostgreSQL Database |
    | Branch | `main` |
    | Root Directory | `bot` |
    | Runtime | `Node` |
@@ -116,7 +117,7 @@ Im Render Dashboard → Bot Service → **Environment**:
 | Key | Wert | Required? | Beschreibung |
 |---|---|---|---|
 | `API_KEY` | Beliebiger zufälliger String (z.B. via `openssl rand -hex 16`) | **Ja** | Authentifizierung WebUI ↔ Bot |
-| `DATA_DIR` | `/data` | **Ja** | Pfad zum Persistent Disk |
+| `DATABASE_URL` | `postgresql://...` (Internal URL aus Schritt 3) | **Ja** | PostgreSQL Connection String |
 | `DISCORD_BOT_TOKEN` | Aus Schritt 1 | Nein | Discord Bot Token (kann auch über WebUI gesetzt werden) |
 | `TWITCH_CLIENT_ID` | Aus Schritt 2 | Nein | Twitch Client ID (kann auch über WebUI gesetzt werden) |
 | `TWITCH_CLIENT_SECRET` | Aus Schritt 2 | Nein | Twitch Client Secret (kann auch über WebUI gesetzt werden) |
@@ -125,20 +126,18 @@ Im Render Dashboard → Bot Service → **Environment**:
 | `DISCORD_NOTIFY_ROLE_ID` | Aus Schritt 1 | Nein | Rolle die bei Go-Live gepingt wird |
 | `DISCORD_STREAMER_ROLE_ID` | Aus Schritt 1 | Nein | Rolle die via `/setup` zugewiesen wird |
 
-> **Hinweis:** Nur `API_KEY` und `DATA_DIR` sind zwingend erforderlich. Alle anderen Werte können auch später über die WebUI konfiguriert werden.
+> **Hinweis:** Nur `API_KEY` und `DATABASE_URL` sind zwingend erforderlich. Alle anderen Werte können auch später über die WebUI konfiguriert werden.
 >
-> **Wichtig:** Environment Variables überschreiben **immer** die Werte aus `config.json` auf dem Disk. Das ist gewollt — Secrets bleiben so auch nach Redeploys erhalten.
-
-### Persistent Disk mounten
-
-1. Im Render Dashboard → Bot Service → **Disks**
-2. **Attach Disk** → Das erstellte Disk (`stream-notify-data`) auswählen
-3. **Mount Path:** `/data` (sollte automatisch übernommen werden)
+> **Wichtig:** Environment Variables überschreiben **immer** die Werte in der Datenbank. Das ist gewollt — Secrets bleiben so auch nach Redeploys erhalten.
 
 ### Deployen
 
 1. **Deploy** klicken
-2. Logs beobachten → `[server] API running on port 3001` bedeutet: erfolgreich
+2. Logs beobachten:
+   - `[db] Connected to PostgreSQL ✓`
+   - `[db] Tables ready ✓`
+   - `[config] Loaded from database ✓`
+   - `[server] API running on port 3001`
 3. **Service URL notieren** (z.B. `https://stream-notify-bot.onrender.com`)
 
 ---
@@ -237,7 +236,7 @@ Nachdem der Bot auf dem Server ist und die WebUI konfiguriert wurde:
 | `/admin list-all` | Alle konfigurierten Nutzer auflisten |
 | `/admin remove-user @user` | Konfiguration eines Nutzers löschen |
 
-> **Ablauf:** Jeder Nutzer führt `/setup twitch ihrname` aus. Der Bot speichert die Zuordnung persistent auf dem Disk und weist automatisch die `DISCORD_STREAMER_ROLE_ID` zu. Ab dann wird der Kanal auf Live-Status überwacht.
+> **Ablauf:** Jeder Nutzer führt `/setup twitch ihrname` aus. Der Bot speichert die Zuordnung persistent in der PostgreSQL-Datenbank und weist automatisch die `DISCORD_STREAMER_ROLE_ID` zu. Ab dann wird der Kanal auf Live-Status überwacht.
 
 ---
 
@@ -248,7 +247,7 @@ Nachdem der Bot auf dem Server ist und die WebUI konfiguriert wurde:
 | Key | Required | Typ | Beispiel | Beschreibung |
 |---|---|---|---|---|
 | `API_KEY` | **Ja** | String | `a1b2c3d4e5f6...` | Authentifizierung WebUI ↔ Bot. Zufälliger String, min. 16 Zeichen |
-| `DATA_DIR` | **Ja** | Pfad | `/data` | Mount Path des Persistent Disks auf Render |
+| `DATABASE_URL` | **Ja** | URL | `postgresql://user:pass@host:5432/db` | PostgreSQL Connection String (Internal URL empfohlen) |
 | `PORT` | Nein | Number | `3001` | Interner Port. Default: `3001` |
 | `DISCORD_BOT_TOKEN` | Nein | String | `OTA...xyz` | Discord Bot Token aus dem Developer Portal |
 | `TWITCH_CLIENT_ID` | Nein | String | `abc123...` | Twitch App Client ID |
@@ -267,49 +266,39 @@ Nachdem der Bot auf dem Server ist und die WebUI konfiguriert wurde:
 
 ---
 
-## Persistent Storage — Dateistruktur
+## Datenbank — Schema
 
-Beide Dateien liegen auf dem Persistent Disk unter `/data`:
+Der Bot erstellt beim ersten Start automatisch folgende Tabellen:
 
-### `/data/config.json`
+### `app_config` Tabelle
 
-Enthält alle Einstellungen aus der WebUI (Discord, Twitch, Notifications, Bot-Settings).
+Enthält alle Einstellungen aus der WebUI (Discord, Twitch, Notifications, Bot-Settings) als Key-Value-Paare.
 
-```json
-{
-  "discordBotToken": "OTA...",
-  "discordGuildId": "123456789",
-  "discordChannelId": "987654321",
-  "discordStreamerRoleId": "444555666",
-  "discordNotifyRoleId": "111222333",
-  "twitchClientId": "abc123...",
-  "twitchClientSecret": "def456...",
-  "twitchUsername": "",
-  "notifyMessage": "🔴 **{username}** ist jetzt live auf Twitch!",
-  "embedColor": "#9146FF",
-  "embedTitle": "{username} streamt jetzt!",
-  "pollIntervalSeconds": 60,
-  "updateIntervalMinutes": 5,
-  "enabled": true
-}
-```
+| key | value |
+|---|---|
+| `discordBotToken` | `OTA...` |
+| `discordGuildId` | `123456789` |
+| `discordChannelId` | `987654321` |
+| `discordStreamerRoleId` | `444555666` |
+| `discordNotifyRoleId` | `111222333` |
+| `twitchClientId` | `abc123...` |
+| `twitchClientSecret` | `def456...` |
+| `notifyMessage` | `🔴 **{username}** ist jetzt live auf Twitch!` |
+| `embedColor` | `#9146FF` |
+| `embedTitle` | `{username} streamt jetzt!` |
+| `pollIntervalSeconds` | `60` |
+| `updateIntervalMinutes` | `5` |
+| `enabled` | `true` |
 
-> `apiKey` wird **nicht** in `config.json` gespeichert — kommt immer aus der Env Var.
+> `apiKey` wird **nicht** in der Datenbank gespeichert — kommt immer aus der Env Var.
 
-### `/data/users.json`
+### `users` Tabelle
 
 Enthält die Discord User → Twitch Username Mappings (via `/setup` erstellt).
 
-```json
-[
-  {
-    "discordUserId": "555666777",
-    "discordUsername": "MaxMustermann",
-    "twitchUsername": "stupssy",
-    "addedAt": "2025-04-10T12:00:00.000Z"
-  }
-]
-```
+| discord_user_id | discord_username | twitch_username | added_at |
+|---|---|---|---|
+| `555666777` | `MaxMustermann` | `stupssy` | `2025-04-10 12:00:00+00` |
 
 ---
 
@@ -365,6 +354,15 @@ Dann:
 
 ## Troubleshooting
 
+### Bot startet nicht / Datenbank-Fehler
+
+- **Problem:** `DATABASE_URL environment variable is required`
+- **Lösung:** Im Render Dashboard → Bot Service → Environment → `DATABASE_URL` mit der Internal PostgreSQL-URL setzen
+- **Wichtig:** Bot und Database müssen in der **gleichen Region** liegen
+
+- **Problem:** `permission denied for table app_config`
+- **Lösung:** Render Database neu erstellen — der Bot-Benutzer hat automatisch Schreibrechte
+
 ### Bot startet nicht / Spin-Down
 
 - **Problem:** Render Free Tier schläft nach ~15 Min ohne Traffic ein
@@ -388,9 +386,9 @@ Dann:
 
 ### Config geht nach Redeploy verloren
 
-- **Ursache:** Persistent Disk nicht gemountet oder `DATA_DIR` falsch
-- **Lösung:** Render Dashboard → Bot Service → Disks → Prüfen ob `/data` gemountet ist
-- **Env Var `DATA_DIR`** muss auf `/data` stehen
+- **Ursache:** `DATABASE_URL` Env Var nicht gesetzt oder Database deleted
+- **Lösung:** Render Dashboard → Bot Service → Environment → `DATABASE_URL` prüfen
+- **Test:** Bot Logs → `[db] Connected to PostgreSQL ✓` und `[config] Loaded from database ✓` müssen erscheinen
 
 ### Twitch API Fehler
 
@@ -411,15 +409,14 @@ Dann:
 ┌─────────────┐     Every 5 min          │  /api/*           │
 │ cron-job.org│ ────────────────────────→│                  │
 └─────────────┘    /health               │                  │
-                                        │  /data/config.json│
-┌─────────────┐     Discord REST API    │  /data/users.json │
-│   Discord   │ ←───────────────────────┤                  │
-└─────────────┘                         └──────────────────┘
-                                               ↓
-┌─────────────┐     Twitch Helix API    ┌──────────────────┐
-│    Twitch   │ ←──────────────────────→│  Persistent Disk │
-└─────────────┘   OAuth2 Token Refresh  │  Render Volume   │
-                                        └──────────────────┘
+                                        │  ←─────→          │
+┌─────────────┐     Discord REST API    │  PostgreSQL       │
+│   Discord   │ ←───────────────────────┤  (app_config,     │
+└─────────────┘                         │   users tables)   │
+                                        │                  │
+┌─────────────┐     Twitch Helix API    └──────────────────┘
+│    Twitch   │ ←──────────────────────→
+└─────────────┘   OAuth2 Token Refresh
 ```
 
 ---
@@ -429,4 +426,5 @@ Dann:
 - **API_KEY:** Wie ein Passwort behandeln. Nicht im Code committen.
 - **DISCORD_BOT_TOKEN:** Niemals öffentlich teilen. Bot Token zurücksetzen wenn kompromittiert.
 - **TWITCH_CLIENT_SECRET:** Wird nur einmal angezeigt. Sicher speichern.
+- **DATABASE_URL:** Internal URL verwenden (nicht die externe, es sei denn der Bot läuft außerhalb von Render).
 - **`.env` Dateien:** Werden via `.gitignore` nicht committen. Nur `.env.example` mit leeren Platzhaltern.

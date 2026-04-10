@@ -115,7 +115,7 @@ async function handleSetup(interaction: ChatInputCommandInteraction): Promise<vo
     }
 
     // Add to user config
-    addUser(userId, username, twitchUsername);
+    await addUser(userId, username, twitchUsername);
 
     // Assign streamer role if configured
     const { discordGuildId, discordStreamerRoleId } = getConfig();
@@ -138,7 +138,7 @@ async function handleSetup(interaction: ChatInputCommandInteraction): Promise<vo
       ephemeral: true,
     });
   } else if (sub === "remove") {
-    const removed = removeUserByDiscordId(userId);
+    const removed = await removeUserByDiscordId(userId);
 
     // Remove streamer role if configured
     const { discordGuildId, discordStreamerRoleId } = getConfig();
@@ -212,7 +212,7 @@ async function handleAdmin(interaction: ChatInputCommandInteraction): Promise<vo
     });
   } else if (sub === "remove-user") {
     const target = interaction.options.getUser("user", true);
-    const removed = removeUserByDiscordId(target.id);
+    const removed = await removeUserByDiscordId(target.id);
 
     // Also try to remove the streamer role
     const { discordGuildId, discordStreamerRoleId } = getConfig();
