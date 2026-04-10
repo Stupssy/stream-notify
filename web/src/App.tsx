@@ -7,6 +7,7 @@ interface BotStatus {
   lastError: string | null;
   isLive: boolean;
   notificationsSent: number;
+  uptime: number;
   currentStream: {
     title?: string;
     gameName?: string;
@@ -28,6 +29,14 @@ interface Config {
   embedTitle: string;
   pollIntervalSeconds: number;
   enabled: boolean;
+}
+
+function formatUptime(seconds: number): string {
+  if (seconds < 60) return `${seconds}s`;
+  if (seconds < 3600) return `${Math.floor(seconds / 60)}m ${seconds % 60}s`;
+  const h = Math.floor(seconds / 3600);
+  const m = Math.floor((seconds % 3600) / 60);
+  return `${h}h ${m}m`;
 }
 
 // ─── Login ────────────────────────────────────────────────────────────────────
@@ -79,9 +88,12 @@ function LoginScreen({ onLogin }: { onLogin: () => void }) {
 }
 
 // ─── Status Card ──────────────────────────────────────────────────────────────
-function StatusCard({ status, onStart, onStop, onRestart }: {
+function StatusCard({ status, onStart, onStop, onRestart, onColdRestart }: {
   status: BotStatus | null;
-  onStart: () => void; onStop: () => void; onRestart: () => void;
+  onStart: () => void;
+  onStop: () => void;
+  onRestart: () => void;
+  onColdRestart: () => void;
 }) {
   if (!status) return <div className="card skeleton" />;
   return (
@@ -104,6 +116,10 @@ function StatusCard({ status, onStart, onStop, onRestart }: {
           <span className="stat-value accent">{status.notificationsSent}</span>
         </div>
         <div className="stat">
+          <span className="stat-label">UPTIME</span>
+          <span className="stat-value dim">{status.running ? formatUptime(status.uptime ?? 0) : "—"}</span>
+        </div>
+        <div className="stat" style={{ gridColumn: "1 / -1" }}>
           <span className="stat-label">LETZTER CHECK</span>
           <span className="stat-value dim">{status.lastCheck ? new Date(status.lastCheck).toLocaleTimeString("de-DE") : "—"}</span>
         </div>
@@ -111,14 +127,25 @@ function StatusCard({ status, onStart, onStop, onRestart }: {
       {status.isLive && status.currentStream && (
         <div className="live-bar">
           <span className="live-tag">LIVE</span>
-          <span className="live-info">{status.currentStream.title} · {status.currentStream.gameName} · {status.currentStream.viewerCount} viewers</span>
+          <span className="live-info">
+            {status.currentStream.title} · {status.currentStream.gameName} · {status.currentStream.viewerCount} viewers
+          </span>
         </div>
       )}
       {status.lastError && <div className="error-bar">⚠ {status.lastError}</div>}
       <div className="btn-row">
         <button className="btn-sm btn-green" onClick={onStart} disabled={status.running}>START</button>
         <button className="btn-sm btn-red" onClick={onStop} disabled={!status.running}>STOP</button>
-        <button className="btn-sm" onClick={onRestart}>RESTART</button>
+        <button
+          className="btn-sm"
+          onClick={onRestart}
+          title="Neustart — behält Stream-Status (kein Doppel-Ping)"
+        >RESTART</button>
+        <button
+          className="btn-sm btn-orange"
+          onClick={onColdRestart}
+          title="Cold Restart — setzt alles zurück. Sendet Notification wenn Stream aktuell live ist."
+        >COLD↺</button>
       </div>
     </div>
   );
@@ -164,15 +191,13 @@ function ConfigForm({ onSaved }: { onSaved: () => void }) {
     if (!file) return;
     try {
       const text = await file.text();
-      JSON.parse(text); // validate JSON
+      JSON.parse(text);
       await importConfig(text);
-      // Reload config into form
       const c = await botApi.getConfig();
       setConfig(c);
       setImportMsg("✓ Config importiert & Bot neugestartet");
       onSaved();
     } catch { setImportMsg("✗ Import fehlgeschlagen — gültige JSON-Datei?"); }
-    // Reset file input
     if (fileRef.current) fileRef.current.value = "";
   }
 
@@ -323,6 +348,7 @@ export default function App() {
           onStart={async () => { await botApi.start(); fetchStatus(); }}
           onStop={async () => { await botApi.stop(); fetchStatus(); }}
           onRestart={async () => { await botApi.restart(); fetchStatus(); }}
+          onColdRestart={async () => { await botApi.coldRestart(); fetchStatus(); }}
         />
         <ConfigForm onSaved={fetchStatus} />
       </main>

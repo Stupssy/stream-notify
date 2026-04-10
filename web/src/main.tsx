@@ -14,6 +14,7 @@ const css = `
     --green: #3dffa0;
     --red: #ff4757;
     --live: #ff3c5f;
+    --orange: #ff9540;
     --font-mono: 'JetBrains Mono', monospace;
     --font-display: 'Syne', sans-serif;
   }
@@ -393,6 +394,7 @@ const css = `
   .btn-sm:disabled { opacity: 0.3; cursor: not-allowed; }
   .btn-sm.btn-green:not(:disabled):hover { border-color: var(--green); color: var(--green); }
   .btn-sm.btn-red:not(:disabled):hover { border-color: var(--red); color: var(--red); }
+  .btn-sm.btn-orange:hover { border-color: var(--orange); color: var(--orange); }
 
   .btn-xs {
     background: none;

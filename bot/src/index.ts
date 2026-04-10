@@ -17,14 +17,39 @@ app.listen(PORT, () => {
   console.log(`[server] API running on port ${PORT}`);
 });
 
-// Start Discord Gateway (bot appears online in server)
+// ── Keepalive ──────────────────────────────────────────────────────────────────
+// Render free tier spins down web services after ~15 min of no incoming traffic.
+// RENDER_EXTERNAL_URL is set automatically by Render for web services.
+// We self-ping every 14 minutes to stay alive.
+const KEEPALIVE_URL =
+  process.env.RENDER_EXTERNAL_URL ??
+  process.env.PUBLIC_URL ??
+  null;
+
+if (KEEPALIVE_URL) {
+  const pingUrl = `${KEEPALIVE_URL}/health`;
+  console.log(`[keepalive] Self-ping active → ${pingUrl} (every 14 min)`);
+  setInterval(async () => {
+    try {
+      await fetch(pingUrl);
+      console.log(`[keepalive] Ping ok`);
+    } catch (err: any) {
+      console.warn(`[keepalive] Ping failed: ${err.message}`);
+    }
+  }, 14 * 60 * 1000);
+} else {
+  console.log("[keepalive] No RENDER_EXTERNAL_URL/PUBLIC_URL set — self-ping disabled");
+  console.log("[keepalive] Tip: set PUBLIC_URL=https://your-bot.onrender.com to prevent spin-down");
+}
+
+// ── Discord Gateway ────────────────────────────────────────────────────────────
 if (config.discordBotToken) {
   startGateway();
 } else {
   console.log("[init] No Discord token yet — configure via WebUI");
 }
 
-// Auto-start polling bot if configured
+// ── Auto-start polling bot ─────────────────────────────────────────────────────
 if (config.enabled && config.twitchUsername && config.twitchClientId) {
   console.log(`[init] Auto-starting bot for @${config.twitchUsername}`);
   startBot();

@@ -1,6 +1,6 @@
 import { Elysia } from "elysia";
 import { getConfig, saveConfig } from "./config";
-import { status, startBot, stopBot, restartBot } from "./bot";
+import { status, startBot, stopBot, restartBot, coldRestartBot } from "./bot";
 import { validateBotToken } from "./discord";
 import { restartGateway } from "./gateway";
 import { getStreamStatus, getUserInfo } from "./twitch";
@@ -24,29 +24,28 @@ export function createServer() {
 
     .get("/api/status", () => ({
       ...status,
-      uptime: Math.floor((Date.now() - (status.uptime || 0)) / 1000),
+      // Compute uptime on the fly from startTime — no stale stored value
+      uptime: status.startTime > 0 ? Math.floor((Date.now() - status.startTime) / 1000) : 0,
       version: "1.0.0",
     }))
 
-    // Config GET — secrets masked for display only, marked with __masked flag
+    // Config GET — secrets masked for display only
     .get("/api/config", ({ headers }) => {
       if (!authCheck(headers["x-api-key"])) return new Response("Unauthorized", { status: 401 });
       const config = { ...getConfig() } as any;
-      // Replace secrets with placeholder — WebUI must NOT send these back
       config.discordBotToken = config.discordBotToken ? "__masked__" : "";
       config.twitchClientSecret = config.twitchClientSecret ? "__masked__" : "";
       return config;
     })
 
-    // Config UPDATE — skips masked fields so real secrets are never overwritten
+    // Config UPDATE — skips masked fields, preserves wasLive across restart
     .post("/api/config", ({ headers, body }) => {
       if (!authCheck(headers["x-api-key"])) return new Response("Unauthorized", { status: 401 });
       const incoming = body as Record<string, any>;
-      // Strip out masked placeholders — keep existing values
       if (incoming.discordBotToken === "__masked__") delete incoming.discordBotToken;
       if (incoming.twitchClientSecret === "__masked__") delete incoming.twitchClientSecret;
       saveConfig(incoming);
-      restartBot();
+      restartBot();       // preserves wasLive — no duplicate notification
       restartGateway();
       return { ok: true, message: "Config saved & bot restarted" };
     })
@@ -93,6 +92,12 @@ export function createServer() {
       if (!authCheck(headers["x-api-key"])) return new Response("Unauthorized", { status: 401 });
       restartBot();
       return { ok: true };
+    })
+    // Cold restart: resets all state, will re-detect stream and send notification even if already live
+    .post("/api/bot/cold-restart", ({ headers }) => {
+      if (!authCheck(headers["x-api-key"])) return new Response("Unauthorized", { status: 401 });
+      coldRestartBot();
+      return { ok: true, message: "Cold restart — stream will be re-detected from scratch" };
     })
 
     .get("/api/validate/discord", async ({ headers }) => {

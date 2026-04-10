@@ -26,6 +26,7 @@ export const botApi = {
   start: () => api("/api/bot/start", { method: "POST" }),
   stop: () => api("/api/bot/stop", { method: "POST" }),
   restart: () => api("/api/bot/restart", { method: "POST" }),
+  coldRestart: () => api("/api/bot/cold-restart", { method: "POST" }),
   validateDiscord: () => api("/api/validate/discord"),
   validateTwitch: () => api("/api/validate/twitch"),
 };

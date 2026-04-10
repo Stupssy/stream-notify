@@ -1,6 +1,6 @@
 import { getConfig } from "./config";
 import { getStreamStatus, getUserInfo, type StreamInfo } from "./twitch";
-import { sendNotification } from "./discord";
+import { sendNotification, updateNotification } from "./discord";
 
 export interface BotStatus {
   running: boolean;
@@ -9,13 +9,13 @@ export interface BotStatus {
   isLive: boolean;
   currentStream: StreamInfo | null;
   notificationsSent: number;
-  uptime: number;
+  startTime: number;
 }
 
 let interval: Timer | null = null;
 let wasLive = false;
-let startTime = Date.now();
 let cachedAvatarUrl: string | undefined;
+let lastMessageId: string | null = null;
 
 export const status: BotStatus = {
   running: false,
@@ -24,7 +24,7 @@ export const status: BotStatus = {
   isLive: false,
   currentStream: null,
   notificationsSent: 0,
-  uptime: 0,
+  startTime: 0,
 };
 
 async function tick() {
@@ -40,13 +40,11 @@ async function tick() {
     status.isLive = stream.isLive;
     status.currentStream = stream;
     status.lastError = null;
-    status.uptime = Math.floor((Date.now() - startTime) / 1000);
 
-    // Went live → fetch avatar once, then send notification
     if (stream.isLive && !wasLive) {
+      // ── Went live → fetch avatar once, send new notification ──────────────
       console.log(`[bot] ${config.twitchUsername} went live! Sending notification...`);
 
-      // Fetch avatar if not cached
       if (!cachedAvatarUrl) {
         try {
           const user = await getUserInfo(config.twitchUsername);
@@ -54,13 +52,22 @@ async function tick() {
         } catch {}
       }
 
-      const sent = await sendNotification(stream, config.twitchUsername, cachedAvatarUrl);
-      if (sent) {
+      const msgId = await sendNotification(stream, config.twitchUsername, cachedAvatarUrl);
+      if (msgId) {
+        lastMessageId = msgId;
         status.notificationsSent++;
-        console.log(`[bot] Notification sent ✓`);
+        console.log(`[bot] Notification sent ✓ (message ${msgId})`);
       } else {
+        lastMessageId = null;
         console.warn(`[bot] Failed to send notification`);
       }
+    } else if (stream.isLive && wasLive && lastMessageId) {
+      // ── Already live → edit existing embed with fresh data ─────────────────
+      await updateNotification(lastMessageId, stream, config.twitchUsername, cachedAvatarUrl);
+    } else if (!stream.isLive && wasLive) {
+      // ── Went offline → clear stored message ID ─────────────────────────────
+      console.log(`[bot] ${config.twitchUsername} went offline`);
+      lastMessageId = null;
     }
 
     wasLive = stream.isLive;
@@ -74,8 +81,9 @@ export function startBot() {
   if (interval) return;
   const config = getConfig();
   status.running = true;
-  startTime = Date.now();
-  wasLive = false;
+  status.startTime = Date.now();
+  // Don't reset wasLive here — it's preserved from restartBot() when needed.
+  // Only reset cachedAvatarUrl so it's refreshed after a restart.
   cachedAvatarUrl = undefined;
   console.log(`[bot] Starting, polling every ${config.pollIntervalSeconds}s`);
   tick();
@@ -91,7 +99,26 @@ export function stopBot() {
   console.log("[bot] Stopped");
 }
 
+/**
+ * Restart the bot.
+ * Preserves wasLive so a config-save while the stream is live doesn't
+ * trigger a duplicate notification on the very next tick.
+ */
 export function restartBot() {
+  const currentlyLive = wasLive;
   stopBot();
+  wasLive = currentlyLive; // keep state across config-save restarts
+  startBot();
+}
+
+/**
+ * Full cold restart — resets all state including wasLive.
+ * Use this when you actually want the bot to re-detect the stream from scratch.
+ */
+export function coldRestartBot() {
+  stopBot();
+  wasLive = false;
+  lastMessageId = null;
+  cachedAvatarUrl = undefined;
   startBot();
 }
