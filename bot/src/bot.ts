@@ -16,6 +16,7 @@ let interval: Timer | null = null;
 let wasLive = false;
 let cachedAvatarUrl: string | undefined;
 let lastMessageId: string | null = null;
+let lastUpdateTime = 0;
 
 export const status: BotStatus = {
   running: false,
@@ -63,11 +64,19 @@ async function tick() {
       }
     } else if (stream.isLive && wasLive && lastMessageId) {
       // ── Already live → edit existing embed with fresh data ─────────────────
-      await updateNotification(lastMessageId, stream, config.twitchUsername, cachedAvatarUrl);
+      const now = Date.now();
+      const updateIntervalMs = config.updateIntervalMinutes * 60 * 1000;
+      
+      if (now - lastUpdateTime >= updateIntervalMs) {
+        await updateNotification(lastMessageId, stream, config.twitchUsername, cachedAvatarUrl);
+        lastUpdateTime = now;
+        console.log(`[bot] Notification updated (${Math.round(config.updateIntervalMinutes)}min interval)`);
+      }
     } else if (!stream.isLive && wasLive) {
       // ── Went offline → clear stored message ID ─────────────────────────────
       console.log(`[bot] ${config.twitchUsername} went offline`);
       lastMessageId = null;
+      lastUpdateTime = 0;
     }
 
     wasLive = stream.isLive;
@@ -119,6 +128,7 @@ export function coldRestartBot() {
   stopBot();
   wasLive = false;
   lastMessageId = null;
+  lastUpdateTime = 0;
   cachedAvatarUrl = undefined;
   startBot();
 }

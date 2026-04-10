@@ -28,6 +28,7 @@ interface ConfigFormData {
   embedColor: string;
   embedTitle: string;
   pollIntervalSeconds: number;
+  updateIntervalMinutes: number;
   enabled: boolean;
 }
 
@@ -337,6 +338,7 @@ function ConfigForm({ onSaved }: { onSaved: () => void }) {
 
         {tab === "bot" && <>
           <Field label="Poll Interval (Sekunden, min. 30)" value={String(config.pollIntervalSeconds ?? 60)} onChange={(v) => update("pollIntervalSeconds", Math.max(30, parseInt(v) || 60))} type="number" />
+          <Field label="Update Interval (Minuten, min. 1)" value={String(config.updateIntervalMinutes ?? 5)} onChange={(v) => update("updateIntervalMinutes", Math.max(1, parseInt(v) || 5))} type="number" />
           <div className="toggle-row">
             <label>Bot aktiviert</label>
             <button className={`toggle ${config.enabled ? "on" : "off"}`} onClick={() => update("enabled", !config.enabled)}>

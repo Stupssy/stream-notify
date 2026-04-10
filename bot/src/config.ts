@@ -19,6 +19,7 @@ export interface Config {
   embedTitle: string;
   // Bot settings
   pollIntervalSeconds: number;
+  updateIntervalMinutes: number;
   enabled: boolean;
   // Internal — never exposed to frontend
   apiKey: string;
@@ -37,6 +38,7 @@ const defaults: Config = {
   embedColor: "#9146FF",
   embedTitle: "{username} streamt jetzt!",
   pollIntervalSeconds: 60,
+  updateIntervalMinutes: 5,
   enabled: false,
   apiKey: process.env.API_KEY ?? crypto.randomUUID(),
 };
