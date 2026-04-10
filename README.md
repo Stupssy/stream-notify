@@ -19,65 +19,20 @@ stream-notify/
 
 ---
 
-## Render Setup
+## Quick Start
 
-### 1. Persistent Disk erstellen
-| Feld | Wert |
-|---|---|
-| Name | z.B. `stream-notify-data` |
-| Mount Path | `/data` |
-| Größe | 1 GB (Free Tier) |
+### 1. Keepalive einrichten (cron-job.org)
 
-> **Wichtig:** Das Disk speichert `config.json` und `users.json`. Ohne Persistent Disk gehen alle Einstellungen nach einem Redeploy verloren.
+> Render Free Tier lässt den Bot nach ~15 Min ohne Traffic einschlafen. Ein kostenloser Cronjob hält ihn wach.
 
-### 2. Bot (Web Service)
-| Feld | Wert |
-|---|---|
-| Root Directory | `bot` |
-| Build Command | `bun install` |
-| Start Command | `bun run src/index.ts` |
-| Health Check Path | `/health` |
+1. https://cron-job.org → Kostenlos registrieren
+2. **Create Cronjob** → URL: `https://dein-bot.onrender.com/health`
+3. **Schedule:** Every 5 minutes (`*/5 * * * *`)
+4. Fertig — der Bot bleibt jetzt dauerhaft aktiv
 
-**Environment Variables (Bot):**
-| Key | Required | Zweck |
-|---|---|---|
-| `API_KEY` | **Ja** | Authentifizierung zwischen WebUI und Bot |
-| `DATA_DIR` | **Ja** | `/data` — Pfad zum Persistent Disk |
-| `PUBLIC_URL` | Empfohlen | `https://dein-bot.onrender.com` — verhindert Spin-Down |
-| `DISCORD_BOT_TOKEN` | Nein | Discord Bot Token (kann auch über WebUI gesetzt werden) |
-| `TWITCH_CLIENT_ID` | Nein | Twitch API Client ID (kann auch über WebUI gesetzt werden) |
-| `TWITCH_CLIENT_SECRET` | Nein | Twitch API Secret (kann auch über WebUI gesetzt werden) |
-| `DISCORD_GUILD_ID` | Nein | Discord Server ID (kann auch über WebUI gesetzt werden) |
-| `DISCORD_CHANNEL_ID` | Nein | Discord Channel ID für Notifications (kann auch über WebUI gesetzt werden) |
-| `DISCORD_NOTIFY_ROLE_ID` | Nein | Rolle die bei Go-Live gepingt wird (kann auch über WebUI gesetzt werden) |
-| `DISCORD_STREAMER_ROLE_ID` | Nein | Rolle die Nutzern via `/setup` zugewiesen wird (kann auch über WebUI gesetzt werden) |
+### 2. Deployen
 
-> **Hinweis:** Nur `API_KEY` und `DATA_DIR` sind zwingend erforderlich.
-> Environment Variables haben **immer Vorrang** vor den Dateien auf dem Persistent Disk.
-
-### 3. WebUI (Static Site)
-| Feld | Wert |
-|---|---|
-| Root Directory | `web` |
-| Build Command | `npm install && npm run build` |
-| Publish Directory | `dist` |
-
-**Environment Variables:**
-| Key | Wert |
-|---|---|
-| `VITE_BOT_URL` | `https://dein-bot.onrender.com` (URL des Bot Service) |
-
----
-
-## Erster Start
-
-1. **Persistent Disk** erstellen → Mount Path `/data` notieren
-2. Bot deployen → Render Dashboard → **Environment** → `API_KEY` + `DATA_DIR=/data` + `PUBLIC_URL` setzen → Redeploy
-3. WebUI öffnen (`https://dein-web.onrender.com`)
-4. Bot URL + API Key eingeben → Connect
-5. Discord & Twitch konfigurieren → Speichern → Bot starten
-
-> **Tipp:** Der API Key und die Bot URL werden nach dem ersten Connect im Browser gespeichert.
+→ Siehe **[SETUP.md](SETUP.md)** für die vollständige Anleitung (Discord Bot, Twitch App, Render, Datenbank, WebUI).
 
 ---
 
