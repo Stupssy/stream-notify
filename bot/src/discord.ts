@@ -67,9 +67,9 @@ function buildEmbed(
     : undefined;
 
   const fields = [
-    { name: "📺 Spiel", value: stream.gameName || "Unbekannt", inline: true },
-    { name: "👥 Zuschauer", value: String(stream.viewerCount ?? 0), inline: true },
-    ...(stream.title ? [{ name: "🎬 Titel", value: stream.title, inline: false }] : []),
+    { name: "Kategorie", value: stream.gameName || "Unbekannt", inline: true },
+    { name: "Viewer", value: String(stream.viewerCount ?? 0), inline: true },
+    ...(stream.title ? [{ name: "Title", value: stream.title, inline: false }] : []),
   ];
 
   const payload: Record<string, unknown> = {

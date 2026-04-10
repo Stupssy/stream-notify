@@ -22,10 +22,23 @@ stream-notify/
 | Start Command | `bun run src/index.ts` |
 | Health Check Path | `/health` |
 
-**Environment Variables:**
-| Key | Wert |
-|---|---|
-| `API_KEY` | Ein selbst gewählter Key (z.B. ein UUID) — bleibt bei Redeploys erhalten! |
+**Environment Variables (Bot):**
+| Key | Required | Zweck |
+|---|---|---|
+| `API_KEY` | **Ja** | Authentifizierung zwischen WebUI und Bot |
+| `PUBLIC_URL` | Empfohlen | `https://dein-bot.onrender.com` — verhindert Spin-Down |
+| `DISCORD_BOT_TOKEN` | Nein | Discord Bot Token (kann auch über WebUI gesetzt werden) |
+| `TWITCH_CLIENT_ID` | Nein | Twitch API Client ID (kann auch über WebUI gesetzt werden) |
+| `TWITCH_CLIENT_SECRET` | Nein | Twitch API Secret (kann auch über WebUI gesetzt werden) |
+| `TWITCH_USERNAME` | Nein | Twitch-Kanalname (kann auch über WebUI gesetzt werden) |
+| `DISCORD_GUILD_ID` | Nein | Discord Server ID (kann auch über WebUI gesetzt werden) |
+| `DISCORD_CHANNEL_ID` | Nein | Discord Channel ID (kann auch über WebUI gesetzt werden) |
+| `DISCORD_NOTIFY_ROLE_ID` | Nein | Rolle die bei Go-Live gepingt wird (kann auch über WebUI gesetzt werden) |
+| `DISCORD_STREAMER_ROLE_ID` | Nein | Streamer-Rolle als Filter (kann auch über WebUI gesetzt werden) |
+
+> **Hinweis:** Nur `API_KEY` ist zwingend erforderlich. Alle Discord/Twitch Settings können
+> alternativ über die WebUI konfiguriert und gespeichert werden.
+> Environment Variables haben **immer Vorrang** vor `config.json` und überleben Redeploys.
 
 ### 2. WebUI (Static Site)
 | Feld | Wert |
@@ -37,16 +50,19 @@ stream-notify/
 **Environment Variables:**
 | Key | Wert |
 |---|---|
-| `VITE_BOT_URL` | `https://dein-bot.onrender.com` |
+| `VITE_BOT_URL` | `https://dein-bot.onrender.com` (URL des Bot Service) |
 
 ---
 
 ## Erster Start
 
-1. Bot deployen → Render Dashboard → **Environment** → `API_KEY` setzen → Redeploy
+1. Bot deployen → Render Dashboard → **Environment** → `API_KEY` + `PUBLIC_URL` setzen → Redeploy
 2. WebUI öffnen (`https://dein-web.onrender.com`)
-3. Bot URL + API Key eingeben → Connect
+3. Bot URL + API Key eingeben → Connect (wird im Browser gespeichert)
 4. Twitch & Discord konfigurieren → Speichern → Bot starten
+
+> **Tipp:** Der API Key und die Bot URL werden nach dem ersten Connect im Browser gespeichert.  
+> Bei späteren Besuchen musst du sie nicht erneut eingeben.
 
 ---
 
