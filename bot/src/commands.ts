@@ -73,7 +73,10 @@ export async function registerCommands(): Promise<void> {
 
   try {
     console.log("[commands] Registering slash commands…");
-    await rest.put(Routes.applicationGuildCommands(discordBotToken.split(".")[0], discordGuildId), {
+    // Discord bot tokens have the format: base64(client_id).base64(timestamp).random
+    // We need to decode the first segment to get the numeric client ID (snowflake).
+    const clientId = Buffer.from(discordBotToken.split(".")[0], "base64").toString("utf-8");
+    await rest.put(Routes.applicationGuildCommands(clientId, discordGuildId), {
       body: commands,
     });
     console.log("[commands] Slash commands registered ✓");

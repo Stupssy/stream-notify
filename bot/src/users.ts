@@ -1,4 +1,5 @@
 import { join } from "path";
+import { existsSync, mkdirSync } from "fs";
 
 /**
  * Persistent storage directory.
@@ -11,8 +12,8 @@ const USERS_PATH = join(DATA_DIR, "users.json");
 /** Ensure the persistent data directory exists */
 function ensureDataDir() {
   try {
-    if (!Bun.file(DATA_DIR).existsSync()) {
-      Bun.mkdirSync(DATA_DIR, { recursive: true });
+    if (!existsSync(DATA_DIR)) {
+      mkdirSync(DATA_DIR, { recursive: true });
     }
   } catch (e: any) {
     console.warn(`[users] Could not create data directory ${DATA_DIR}: ${e.message}`);
