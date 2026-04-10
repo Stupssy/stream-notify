@@ -1,4 +1,4 @@
-import { Elysia, cors } from "elysia";
+import { Elysia } from "elysia";
 import { getConfig, saveConfig } from "./config";
 import { status, startBot, stopBot, restartBot, coldRestartBot } from "./bot";
 import { validateBotToken } from "./discord";
@@ -9,9 +9,24 @@ function authCheck(apiKey: string | undefined): boolean {
   return apiKey === getConfig().apiKey;
 }
 
+function setCorsHeaders(set: any) {
+  set.headers["Access-Control-Allow-Origin"] = "*";
+  set.headers["Access-Control-Allow-Headers"] = "Content-Type, X-API-Key";
+  set.headers["Access-Control-Allow-Methods"] = "GET, POST, PUT, OPTIONS";
+}
+
 export function createServer() {
   const app = new Elysia()
-    .use(cors())
+
+    // Handle CORS preflight (OPTIONS) requests
+    .options("/*", ({ set }) => {
+      setCorsHeaders(set);
+      return new Response(null, { status: 204 });
+    })
+
+    .onBeforeHandle(({ set }) => {
+      setCorsHeaders(set);
+    })
 
     .get("/health", () => ({ ok: true, ts: Date.now() }))
 
