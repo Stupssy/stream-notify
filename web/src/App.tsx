@@ -23,7 +23,6 @@ interface ConfigFormData {
   discordNotifyRoleId: string;
   twitchClientId: string;
   twitchClientSecret: string;
-  twitchUsername: string;
   notifyMessage: string;
   embedColor: string;
   embedTitle: string;
@@ -314,10 +313,8 @@ function ConfigForm({ onSaved }: { onSaved: () => void }) {
 
       <div className="form-fields">
         {tab === "twitch" && <>
-          <Field label="Twitch Username" value={config.twitchUsername ?? ""} onChange={(v) => update("twitchUsername", v)} placeholder="stupssy" id="twitch-username" />
           <Field label="Client ID" value={config.twitchClientId ?? ""} onChange={(v) => update("twitchClientId", v)} placeholder="von dev.twitch.tv" id="twitch-client-id" />
           <SecretField label="Client Secret" value={config.twitchClientSecret ?? ""} onChange={(v) => update("twitchClientSecret", v)} placeholder="Twitch Client Secret" id="twitch-client-secret" />
-          <ValidateBtn label="Twitch testen" action={() => botApi.validateTwitch()} resetKey={`${config.twitchUsername ?? ""}${config.twitchClientId ?? ""}${config.twitchClientSecret ?? ""}`} />
         </>}
 
         {tab === "discord" && <>

@@ -24,8 +24,6 @@ async function api<T>(path: string, options?: RequestInit): Promise<T> {
 export interface ValidationResult {
   valid: boolean;
   error?: string;
-  isLive?: boolean;
-  user?: unknown;
 }
 
 export interface BotStatusResponse {
@@ -54,7 +52,6 @@ export const botApi = {
   restart: () => api<{ ok: boolean }>("/api/bot/restart", { method: "POST" }),
   coldRestart: () => api<{ ok: boolean; message?: string }>("/api/bot/cold-restart", { method: "POST" }),
   validateDiscord: () => api<ValidationResult>("/api/validate/discord"),
-  validateTwitch: () => api<ValidationResult>("/api/validate/twitch"),
 };
 
 export function setApiKey(key: string) {

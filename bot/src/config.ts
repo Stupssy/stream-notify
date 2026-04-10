@@ -10,7 +10,6 @@ export interface Config {
   // Twitch
   twitchClientId: string;
   twitchClientSecret: string;
-  twitchUsername: string;
   // Notification
   notifyMessage: string;
   embedColor: string;
@@ -31,7 +30,6 @@ const defaults: Config = {
   discordNotifyRoleId: "",
   twitchClientId: "",
   twitchClientSecret: "",
-  twitchUsername: "",
   notifyMessage: "🔴 **{username}** ist jetzt live auf Twitch!",
   embedColor: "#9146FF",
   embedTitle: "{username} streamt jetzt!",
@@ -47,7 +45,6 @@ const ENV_OVERRIDES: Partial<Record<keyof Config, string>> = {
   discordBotToken:    "DISCORD_BOT_TOKEN",
   twitchClientId:     "TWITCH_CLIENT_ID",
   twitchClientSecret: "TWITCH_CLIENT_SECRET",
-  twitchUsername:     "TWITCH_USERNAME",
   discordGuildId:     "DISCORD_GUILD_ID",
   discordChannelId:   "DISCORD_CHANNEL_ID",
   discordNotifyRoleId:"DISCORD_NOTIFY_ROLE_ID",

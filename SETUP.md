@@ -252,7 +252,6 @@ Nachdem der Bot auf dem Server ist und die WebUI konfiguriert wurde:
 | `DISCORD_BOT_TOKEN` | Nein | String | `OTA...xyz` | Discord Bot Token aus dem Developer Portal |
 | `TWITCH_CLIENT_ID` | Nein | String | `abc123...` | Twitch App Client ID |
 | `TWITCH_CLIENT_SECRET` | Nein | String | `def456...` | Twitch App Client Secret |
-| `TWITCH_USERNAME` | Nein | String | `stupssy` | Twitch Username für Single-User-Setup (Legacy) |
 | `DISCORD_GUILD_ID` | Nein | String | `123456789` | Discord Server ID |
 | `DISCORD_CHANNEL_ID` | Nein | String | `987654321` | Discord Channel ID für Notifications |
 | `DISCORD_NOTIFY_ROLE_ID` | Nein | String | `111222333` | Discord Role ID für @Ping bei Go-Live |

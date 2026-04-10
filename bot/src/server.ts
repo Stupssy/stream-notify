@@ -3,7 +3,6 @@ import { getConfig, saveConfig } from "./config";
 import { status, startBot, stopBot, restartBot, coldRestartBot } from "./bot";
 import { validateBotToken } from "./discord";
 import { restartGateway } from "./gateway";
-import { getStreamStatus, getUserInfo } from "./twitch";
 
 function authCheck(apiKey: string | undefined): boolean {
   return apiKey === getConfig().apiKey;
@@ -112,19 +111,6 @@ export function createServer() {
       if (!authCheck(headers["x-api-key"])) return new Response("Unauthorized", { status: 401 });
       const valid = await validateBotToken();
       return { valid };
-    })
-
-    .get("/api/validate/twitch", async ({ headers }) => {
-      if (!authCheck(headers["x-api-key"])) return new Response("Unauthorized", { status: 401 });
-      const { twitchUsername } = getConfig();
-      if (!twitchUsername) return { valid: false, error: "No username configured" };
-      try {
-        const stream = await getStreamStatus(twitchUsername);
-        const user = await getUserInfo(twitchUsername);
-        return { valid: true, isLive: stream.isLive, user };
-      } catch (e: any) {
-        return { valid: false, error: e.message };
-      }
     });
 
   return app;
