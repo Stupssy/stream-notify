@@ -1,4 +1,4 @@
-import { Elysia } from "elysia";
+import { Elysia, cors } from "elysia";
 import { getConfig, saveConfig } from "./config";
 import { status, startBot, stopBot, restartBot, coldRestartBot } from "./bot";
 import { validateBotToken } from "./discord";
@@ -11,14 +11,7 @@ function authCheck(apiKey: string | undefined): boolean {
 
 export function createServer() {
   const app = new Elysia()
-
-    .onBeforeHandle(({ set }) => {
-      set.headers["Access-Control-Allow-Origin"] = "*";
-      set.headers["Access-Control-Allow-Headers"] = "Content-Type, X-API-Key";
-      set.headers["Access-Control-Allow-Methods"] = "GET, POST, PUT, OPTIONS";
-    })
-
-    .options("/*", () => new Response(null, { status: 204 }))
+    .use(cors())
 
     .get("/health", () => ({ ok: true, ts: Date.now() }))
 
