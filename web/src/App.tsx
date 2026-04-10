@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback, useRef } from "react";
-import { botApi, setApiKey, setBotUrl, exportConfig, importConfig } from "./api";
+import { botApi, exportConfig, importConfig } from "./api";
 
 interface BotStatus {
   running: boolean;
@@ -31,6 +31,12 @@ interface Config {
   enabled: boolean;
 }
 
+const MASKED = "__masked__";
+
+function isMasked(v: string | undefined) {
+  return v === MASKED;
+}
+
 function formatUptime(seconds: number): string {
   if (seconds < 60) return `${seconds}s`;
   if (seconds < 3600) return `${Math.floor(seconds / 60)}m ${seconds % 60}s`;
@@ -50,9 +56,10 @@ function LoginScreen({ onLogin }: { onLogin: () => void }) {
     setLoading(true);
     setError("");
     try {
-      localStorage.setItem("sn_bot_url", url);
+      localStorage.setItem("sn_bot_url", url.replace(/\/$/, ""));
       localStorage.setItem("sn_api_key", key);
-      await fetch(`${url}/health`);
+      const res = await fetch(`${url.replace(/\/$/, "")}/health`);
+      if (!res.ok) throw new Error("not ok");
       onLogin();
     } catch {
       setError("Bot nicht erreichbar. URL prüfen.");
@@ -136,17 +143,79 @@ function StatusCard({ status, onStart, onStop, onRestart, onColdRestart }: {
       <div className="btn-row">
         <button className="btn-sm btn-green" onClick={onStart} disabled={status.running}>START</button>
         <button className="btn-sm btn-red" onClick={onStop} disabled={!status.running}>STOP</button>
-        <button
-          className="btn-sm"
-          onClick={onRestart}
-          title="Neustart — behält Stream-Status (kein Doppel-Ping)"
-        >RESTART</button>
-        <button
-          className="btn-sm btn-orange"
-          onClick={onColdRestart}
-          title="Cold Restart — setzt alles zurück. Sendet Notification wenn Stream aktuell live ist."
-        >COLD↺</button>
+        <button className="btn-sm" onClick={onRestart} title="Neustart — behält Stream-Status (kein Doppel-Ping)">RESTART</button>
+        <button className="btn-sm btn-orange" onClick={onColdRestart} title="Cold Restart — setzt alles zurück. Sendet Notification wenn Stream gerade live ist.">COLD↺</button>
       </div>
+    </div>
+  );
+}
+
+// ─── Secret Field ─────────────────────────────────────────────────────────────
+// For fields that arrive as "__masked__" from the server.
+// Shows a "SET ✓" badge + "Ändern"-button instead of the masked placeholder.
+// Only sends a new value if the user explicitly clicked "Ändern" and typed something.
+function SecretField({ label, value, onChange, placeholder }: {
+  label: string;
+  value: string;
+  onChange: (v: string) => void;
+  placeholder?: string;
+}) {
+  const [editing, setEditing] = useState(false);
+  const [draft, setDraft] = useState("");
+
+  const isSet = isMasked(value);
+
+  if (isSet && !editing) {
+    return (
+      <div className="field-group">
+        <label>{label}</label>
+        <div className="secret-set-row">
+          <span className="secret-set-badge">SET ✓</span>
+          <span className="secret-set-hint">via Render Env Var oder gespeichert</span>
+          <button className="btn-xs" onClick={() => { setDraft(""); setEditing(true); }}>ÄNDERN</button>
+        </div>
+      </div>
+    );
+  }
+
+  if (editing) {
+    return (
+      <div className="field-group">
+        <label>{label}</label>
+        <div className="secret-edit-row">
+          <input
+            type="password"
+            value={draft}
+            onChange={(e) => setDraft(e.target.value)}
+            placeholder={placeholder ?? "Neuen Wert eingeben..."}
+            autoFocus
+            spellCheck={false}
+          />
+          <button className="btn-xs btn-xs-green" onClick={() => {
+            if (draft.trim()) { onChange(draft.trim()); }
+            setEditing(false);
+          }}>OK</button>
+          <button className="btn-xs" onClick={() => {
+            setEditing(false);
+            // If was masked before and user cancels, restore masked value
+            if (isSet) onChange(MASKED);
+          }}>✕</button>
+        </div>
+      </div>
+    );
+  }
+
+  // Not masked, not editing — normal password input (new value being entered)
+  return (
+    <div className="field-group">
+      <label>{label}</label>
+      <input
+        type="password"
+        value={value}
+        onChange={(e) => onChange(e.target.value)}
+        placeholder={placeholder}
+        spellCheck={false}
+      />
     </div>
   );
 }
@@ -162,7 +231,9 @@ function ConfigForm({ onSaved }: { onSaved: () => void }) {
   const fileRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
-    botApi.getConfig().then((c) => { setConfig(c); setLoading(false); }).catch(() => setLoading(false));
+    botApi.getConfig()
+      .then((c) => { setConfig(c); setLoading(false); })
+      .catch(() => setLoading(false));
   }, []);
 
   function update(key: keyof Config, value: string | number | boolean) {
@@ -172,11 +243,22 @@ function ConfigForm({ onSaved }: { onSaved: () => void }) {
   async function save() {
     setSaving(true); setMsg("");
     try {
-      await botApi.saveConfig(config as Record<string, unknown>);
+      // Build payload — strip masked values so server keeps existing secrets
+      const payload: Record<string, unknown> = { ...config };
+      if (payload.discordBotToken === MASKED) delete payload.discordBotToken;
+      if (payload.twitchClientSecret === MASKED) delete payload.twitchClientSecret;
+
+      await botApi.saveConfig(payload);
+      // Reload from server so masked fields are correctly reflected
+      const fresh = await botApi.getConfig();
+      setConfig(fresh);
       setMsg("✓ Gespeichert & Bot neugestartet");
       onSaved();
-    } catch { setMsg("✗ Fehler beim Speichern"); }
-    finally { setSaving(false); }
+    } catch {
+      setMsg("✗ Fehler beim Speichern");
+    } finally {
+      setSaving(false);
+    }
   }
 
   async function handleExport() {
@@ -191,7 +273,7 @@ function ConfigForm({ onSaved }: { onSaved: () => void }) {
     if (!file) return;
     try {
       const text = await file.text();
-      JSON.parse(text);
+      JSON.parse(text); // validate
       await importConfig(text);
       const c = await botApi.getConfig();
       setConfig(c);
@@ -215,9 +297,7 @@ function ConfigForm({ onSaved }: { onSaved: () => void }) {
       </div>
 
       {importMsg && (
-        <div className={`save-msg ${importMsg.startsWith("✓") ? "ok" : "err"}`}>
-          {importMsg}
-        </div>
+        <div className={`save-msg ${importMsg.startsWith("✓") ? "ok" : "err"}`}>{importMsg}</div>
       )}
 
       <div className="tabs">
@@ -232,12 +312,12 @@ function ConfigForm({ onSaved }: { onSaved: () => void }) {
         {tab === "twitch" && <>
           <Field label="Twitch Username" value={config.twitchUsername ?? ""} onChange={(v) => update("twitchUsername", v)} placeholder="stupssy" />
           <Field label="Client ID" value={config.twitchClientId ?? ""} onChange={(v) => update("twitchClientId", v)} placeholder="von dev.twitch.tv" />
-          <Field label="Client Secret" value={config.twitchClientSecret ?? ""} onChange={(v) => update("twitchClientSecret", v)} type="password" placeholder="••••••••" />
+          <SecretField label="Client Secret" value={config.twitchClientSecret ?? ""} onChange={(v) => update("twitchClientSecret", v)} placeholder="Twitch Client Secret" />
           <ValidateBtn label="Twitch testen" action={() => botApi.validateTwitch()} />
         </>}
 
         {tab === "discord" && <>
-          <Field label="Bot Token" value={config.discordBotToken ?? ""} onChange={(v) => update("discordBotToken", v)} type="password" placeholder="Bot Token aus Developer Portal" />
+          <SecretField label="Bot Token" value={config.discordBotToken ?? ""} onChange={(v) => update("discordBotToken", v)} placeholder="Bot Token aus Developer Portal" />
           <Field label="Server (Guild) ID" value={config.discordGuildId ?? ""} onChange={(v) => update("discordGuildId", v)} placeholder="123456789" />
           <Field label="Channel ID" value={config.discordChannelId ?? ""} onChange={(v) => update("discordChannelId", v)} placeholder="Notification Channel ID" />
           <Field label="Ping Rollen-ID (optional)" value={config.discordNotifyRoleId ?? ""} onChange={(v) => update("discordNotifyRoleId", v)} placeholder="Rolle die gepingt wird (leer = kein Ping)" />
@@ -253,12 +333,19 @@ function ConfigForm({ onSaved }: { onSaved: () => void }) {
         </>}
 
         {tab === "bot" && <>
-          <Field label="Poll Interval (Sekunden)" value={String(config.pollIntervalSeconds ?? 60)} onChange={(v) => update("pollIntervalSeconds", parseInt(v))} type="number" />
+          <Field label="Poll Interval (Sekunden, min. 30)" value={String(config.pollIntervalSeconds ?? 60)} onChange={(v) => update("pollIntervalSeconds", Math.max(30, parseInt(v) || 60))} type="number" />
           <div className="toggle-row">
             <label>Bot aktiviert</label>
             <button className={`toggle ${config.enabled ? "on" : "off"}`} onClick={() => update("enabled", !config.enabled)}>
               {config.enabled ? "AN" : "AUS"}
             </button>
+          </div>
+          <div className="info-box">
+            <p className="hint" style={{ borderColor: "var(--dim)" }}>
+              💡 Secrets (Token, Client Secret) können auch als Render Env Vars gesetzt werden:<br />
+              <code>DISCORD_BOT_TOKEN</code> · <code>TWITCH_CLIENT_ID</code> · <code>TWITCH_CLIENT_SECRET</code><br />
+              Env Vars überschreiben immer die gespeicherte Config und überleben Redeploys.
+            </p>
           </div>
         </>}
       </div>
@@ -297,7 +384,7 @@ function ValidateBtn({ label, action }: { label: string; action: () => Promise<a
     try {
       const res = await action();
       if (res.valid === false) { setState("err"); setMsg(res.error ?? "Ungültig"); }
-      else { setState("ok"); setMsg(res.isLive !== undefined ? (res.isLive ? "Live!" : "Offline (aber valide)") : "OK!"); }
+      else { setState("ok"); setMsg(res.isLive !== undefined ? (res.isLive ? "Live!" : "Offline (valide)") : "OK!"); }
     } catch { setState("err"); setMsg("Verbindungsfehler"); }
   }
 
