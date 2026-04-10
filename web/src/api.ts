@@ -1,11 +1,15 @@
 const BASE = import.meta.env.VITE_BOT_URL ?? "http://localhost:3001";
 
-function getApiKey() {
+function getBaseUrl(): string {
+  return localStorage.getItem("sn_bot_url") ?? BASE;
+}
+
+function getApiKey(): string {
   return localStorage.getItem("sn_api_key") ?? "";
 }
 
-async function api(path: string, options?: RequestInit) {
-  const res = await fetch(`${BASE}${path}`, {
+async function api<T>(path: string, options?: RequestInit): Promise<T> {
+  const res = await fetch(`${getBaseUrl()}${path}`, {
     ...options,
     headers: {
       "Content-Type": "application/json",
@@ -14,21 +18,43 @@ async function api(path: string, options?: RequestInit) {
     },
   });
   if (!res.ok) throw new Error(`API error ${res.status}`);
-  return res.json();
+  return res.json() as Promise<T>;
+}
+
+export interface ValidationResult {
+  valid: boolean;
+  error?: string;
+  isLive?: boolean;
+  user?: unknown;
+}
+
+export interface BotStatusResponse {
+  running: boolean;
+  lastCheck: string | null;
+  lastError: string | null;
+  isLive: boolean;
+  notificationsSent: number;
+  uptime: number;
+  currentStream: {
+    title?: string;
+    gameName?: string;
+    viewerCount?: number;
+  } | null;
+  version?: string;
 }
 
 export const botApi = {
-  health: () => api("/health"),
-  status: () => api("/api/status"),
-  getConfig: () => api("/api/config"),
+  health: () => api<{ ok: boolean; ts: number }>("/health"),
+  status: () => api<BotStatusResponse>("/api/status"),
+  getConfig: () => api<Record<string, unknown>>("/api/config"),
   saveConfig: (config: Record<string, unknown>) =>
-    api("/api/config", { method: "POST", body: JSON.stringify(config) }),
-  start: () => api("/api/bot/start", { method: "POST" }),
-  stop: () => api("/api/bot/stop", { method: "POST" }),
-  restart: () => api("/api/bot/restart", { method: "POST" }),
-  coldRestart: () => api("/api/bot/cold-restart", { method: "POST" }),
-  validateDiscord: () => api("/api/validate/discord"),
-  validateTwitch: () => api("/api/validate/twitch"),
+    api<{ ok: boolean; message: string }>("/api/config", { method: "POST", body: JSON.stringify(config) }),
+  start: () => api<{ ok: boolean }>("/api/bot/start", { method: "POST" }),
+  stop: () => api<{ ok: boolean }>("/api/bot/stop", { method: "POST" }),
+  restart: () => api<{ ok: boolean }>("/api/bot/restart", { method: "POST" }),
+  coldRestart: () => api<{ ok: boolean; message?: string }>("/api/bot/cold-restart", { method: "POST" }),
+  validateDiscord: () => api<ValidationResult>("/api/validate/discord"),
+  validateTwitch: () => api<ValidationResult>("/api/validate/twitch"),
 };
 
 export function setApiKey(key: string) {
@@ -40,10 +66,8 @@ export function setBotUrl(url: string) {
 }
 
 export async function exportConfig(): Promise<void> {
-  const BASE = localStorage.getItem("sn_bot_url") ?? "";
-  const key = localStorage.getItem("sn_api_key") ?? "";
-  const res = await fetch(`${BASE}/api/config/export`, {
-    headers: { "X-API-Key": key },
+  const res = await fetch(`${getBaseUrl()}/api/config/export`, {
+    headers: { "X-API-Key": getApiKey() },
   });
   if (!res.ok) throw new Error("Export fehlgeschlagen");
   const blob = await res.blob();
@@ -55,12 +79,13 @@ export async function exportConfig(): Promise<void> {
   URL.revokeObjectURL(url);
 }
 
+const MAX_IMPORT_SIZE = 1024 * 1024; // 1MB
+
 export async function importConfig(json: string): Promise<void> {
-  const BASE = localStorage.getItem("sn_bot_url") ?? "";
-  const key = localStorage.getItem("sn_api_key") ?? "";
-  const res = await fetch(`${BASE}/api/config/import`, {
+  if (json.length > MAX_IMPORT_SIZE) throw new Error("Datei zu groß (max 1MB)");
+  const res = await fetch(`${getBaseUrl()}/api/config/import`, {
     method: "POST",
-    headers: { "Content-Type": "application/json", "X-API-Key": key },
+    headers: { "Content-Type": "application/json", "X-API-Key": getApiKey() },
     body: json,
   });
   if (!res.ok) throw new Error("Import fehlgeschlagen");

@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback, useRef } from "react";
-import { botApi, exportConfig, importConfig } from "./api";
+import { botApi, exportConfig, importConfig, type ValidationResult } from "./api";
 
 interface BotStatus {
   running: boolean;
@@ -15,7 +15,7 @@ interface BotStatus {
   } | null;
 }
 
-interface Config {
+interface ConfigFormData {
   discordBotToken: string;
   discordGuildId: string;
   discordChannelId: string;
@@ -95,12 +95,13 @@ function LoginScreen({ onLogin }: { onLogin: () => void }) {
 }
 
 // ─── Status Card ──────────────────────────────────────────────────────────────
-function StatusCard({ status, onStart, onStop, onRestart, onColdRestart }: {
+function StatusCard({ status, onStart, onStop, onRestart, onColdRestart, actionDisabled }: {
   status: BotStatus | null;
   onStart: () => void;
   onStop: () => void;
   onRestart: () => void;
   onColdRestart: () => void;
+  actionDisabled: boolean;
 }) {
   if (!status) return <div className="card skeleton" />;
   return (
@@ -141,10 +142,10 @@ function StatusCard({ status, onStart, onStop, onRestart, onColdRestart }: {
       )}
       {status.lastError && <div className="error-bar">⚠ {status.lastError}</div>}
       <div className="btn-row">
-        <button className="btn-sm btn-green" onClick={onStart} disabled={status.running}>START</button>
-        <button className="btn-sm btn-red" onClick={onStop} disabled={!status.running}>STOP</button>
-        <button className="btn-sm" onClick={onRestart} title="Neustart — behält Stream-Status (kein Doppel-Ping)">RESTART</button>
-        <button className="btn-sm btn-orange" onClick={onColdRestart} title="Cold Restart — setzt alles zurück. Sendet Notification wenn Stream gerade live ist.">COLD↺</button>
+        <button className="btn-sm btn-green" onClick={onStart} disabled={status.running || actionDisabled}>START</button>
+        <button className="btn-sm btn-red" onClick={onStop} disabled={!status.running || actionDisabled}>STOP</button>
+        <button className="btn-sm" onClick={onRestart} disabled={actionDisabled} title="Neustart — behält Stream-Status (kein Doppel-Ping)">RESTART</button>
+        <button className="btn-sm btn-orange" onClick={onColdRestart} disabled={actionDisabled} title="Cold Restart — setzt alles zurück. Sendet Notification wenn Stream gerade live ist.">COLD↺</button>
       </div>
     </div>
   );
@@ -154,25 +155,26 @@ function StatusCard({ status, onStart, onStop, onRestart, onColdRestart }: {
 // For fields that arrive as "__masked__" from the server.
 // Shows a "SET ✓" badge + "Ändern"-button instead of the masked placeholder.
 // Only sends a new value if the user explicitly clicked "Ändern" and typed something.
-function SecretField({ label, value, onChange, placeholder }: {
+function SecretField({ label, value, onChange, placeholder, id }: {
   label: string;
   value: string;
   onChange: (v: string) => void;
   placeholder?: string;
+  id?: string;
 }) {
   const [editing, setEditing] = useState(false);
   const [draft, setDraft] = useState("");
-
+  const fieldId = id ?? label.toLowerCase().replace(/[^a-z0-9]+/g, "-");
   const isSet = isMasked(value);
 
   if (isSet && !editing) {
     return (
       <div className="field-group">
-        <label>{label}</label>
+        <label htmlFor={fieldId}>{label}</label>
         <div className="secret-set-row">
           <span className="secret-set-badge">SET ✓</span>
           <span className="secret-set-hint">via Render Env Var oder gespeichert</span>
-          <button className="btn-xs" onClick={() => { setDraft(""); setEditing(true); }}>ÄNDERN</button>
+          <button className="btn-xs" id={`btn-${fieldId}`} onClick={() => { setDraft(""); setEditing(true); }}>ÄNDERN</button>
         </div>
       </div>
     );
@@ -181,10 +183,11 @@ function SecretField({ label, value, onChange, placeholder }: {
   if (editing) {
     return (
       <div className="field-group">
-        <label>{label}</label>
+        <label htmlFor={fieldId}>{label}</label>
         <div className="secret-edit-row">
           <input
             type="password"
+            id={fieldId}
             value={draft}
             onChange={(e) => setDraft(e.target.value)}
             placeholder={placeholder ?? "Neuen Wert eingeben..."}
@@ -197,7 +200,6 @@ function SecretField({ label, value, onChange, placeholder }: {
           }}>OK</button>
           <button className="btn-xs" onClick={() => {
             setEditing(false);
-            // If was masked before and user cancels, restore masked value
             if (isSet) onChange(MASKED);
           }}>✕</button>
         </div>
@@ -208,9 +210,10 @@ function SecretField({ label, value, onChange, placeholder }: {
   // Not masked, not editing — normal password input (new value being entered)
   return (
     <div className="field-group">
-      <label>{label}</label>
+      <label htmlFor={fieldId}>{label}</label>
       <input
         type="password"
+        id={fieldId}
         value={value}
         onChange={(e) => onChange(e.target.value)}
         placeholder={placeholder}
@@ -222,7 +225,7 @@ function SecretField({ label, value, onChange, placeholder }: {
 
 // ─── Config Form ──────────────────────────────────────────────────────────────
 function ConfigForm({ onSaved }: { onSaved: () => void }) {
-  const [config, setConfig] = useState<Partial<Config>>({});
+  const [config, setConfig] = useState<Partial<ConfigFormData>>({});
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [msg, setMsg] = useState("");
@@ -232,11 +235,11 @@ function ConfigForm({ onSaved }: { onSaved: () => void }) {
 
   useEffect(() => {
     botApi.getConfig()
-      .then((c) => { setConfig(c); setLoading(false); })
+      .then((c) => { setConfig(c as Partial<ConfigFormData>); setLoading(false); })
       .catch(() => setLoading(false));
   }, []);
 
-  function update(key: keyof Config, value: string | number | boolean) {
+  function update<K extends keyof ConfigFormData>(key: K, value: ConfigFormData[K]) {
     setConfig((prev) => ({ ...prev, [key]: value }));
   }
 
@@ -310,19 +313,19 @@ function ConfigForm({ onSaved }: { onSaved: () => void }) {
 
       <div className="form-fields">
         {tab === "twitch" && <>
-          <Field label="Twitch Username" value={config.twitchUsername ?? ""} onChange={(v) => update("twitchUsername", v)} placeholder="stupssy" />
-          <Field label="Client ID" value={config.twitchClientId ?? ""} onChange={(v) => update("twitchClientId", v)} placeholder="von dev.twitch.tv" />
-          <SecretField label="Client Secret" value={config.twitchClientSecret ?? ""} onChange={(v) => update("twitchClientSecret", v)} placeholder="Twitch Client Secret" />
-          <ValidateBtn label="Twitch testen" action={() => botApi.validateTwitch()} />
+          <Field label="Twitch Username" value={config.twitchUsername ?? ""} onChange={(v) => update("twitchUsername", v)} placeholder="stupssy" id="twitch-username" />
+          <Field label="Client ID" value={config.twitchClientId ?? ""} onChange={(v) => update("twitchClientId", v)} placeholder="von dev.twitch.tv" id="twitch-client-id" />
+          <SecretField label="Client Secret" value={config.twitchClientSecret ?? ""} onChange={(v) => update("twitchClientSecret", v)} placeholder="Twitch Client Secret" id="twitch-client-secret" />
+          <ValidateBtn label="Twitch testen" action={() => botApi.validateTwitch()} resetKey={`${config.twitchUsername ?? ""}${config.twitchClientId ?? ""}${config.twitchClientSecret ?? ""}`} />
         </>}
 
         {tab === "discord" && <>
-          <SecretField label="Bot Token" value={config.discordBotToken ?? ""} onChange={(v) => update("discordBotToken", v)} placeholder="Bot Token aus Developer Portal" />
-          <Field label="Server (Guild) ID" value={config.discordGuildId ?? ""} onChange={(v) => update("discordGuildId", v)} placeholder="123456789" />
-          <Field label="Channel ID" value={config.discordChannelId ?? ""} onChange={(v) => update("discordChannelId", v)} placeholder="Notification Channel ID" />
-          <Field label="Ping Rollen-ID (optional)" value={config.discordNotifyRoleId ?? ""} onChange={(v) => update("discordNotifyRoleId", v)} placeholder="Rolle die gepingt wird (leer = kein Ping)" />
-          <Field label="Streamer Rollen-ID (optional)" value={config.discordStreamerRoleId ?? ""} onChange={(v) => update("discordStreamerRoleId", v)} placeholder="Leer lassen = kein Filter" />
-          <ValidateBtn label="Discord testen" action={() => botApi.validateDiscord()} />
+          <SecretField label="Bot Token" value={config.discordBotToken ?? ""} onChange={(v) => update("discordBotToken", v)} placeholder="Bot Token aus Developer Portal" id="discord-bot-token" />
+          <Field label="Server (Guild) ID" value={config.discordGuildId ?? ""} onChange={(v) => update("discordGuildId", v)} placeholder="123456789" id="discord-guild-id" />
+          <Field label="Channel ID" value={config.discordChannelId ?? ""} onChange={(v) => update("discordChannelId", v)} placeholder="Notification Channel ID" id="discord-channel-id" />
+          <Field label="Ping Rollen-ID (optional)" value={config.discordNotifyRoleId ?? ""} onChange={(v) => update("discordNotifyRoleId", v)} placeholder="Rolle die gepingt wird (leer = kein Ping)" id="discord-notify-role-id" />
+          <Field label="Streamer Rollen-ID (optional)" value={config.discordStreamerRoleId ?? ""} onChange={(v) => update("discordStreamerRoleId", v)} placeholder="Leer lassen = kein Filter" id="discord-streamer-role-id" />
+          <ValidateBtn label="Discord testen" action={() => botApi.validateDiscord()} resetKey={`${config.discordBotToken ?? ""}${config.discordGuildId ?? ""}`} />
         </>}
 
         {tab === "notify" && <>
@@ -358,26 +361,33 @@ function ConfigForm({ onSaved }: { onSaved: () => void }) {
   );
 }
 
-function Field({ label, value, onChange, type = "text", placeholder }: {
-  label: string; value: string; onChange: (v: string) => void; type?: string; placeholder?: string;
+function Field({ label, value, onChange, type = "text", placeholder, id }: {
+  label: string; value: string; onChange: (v: string) => void; type?: string; placeholder?: string; id?: string;
 }) {
+  const fieldId = id ?? label.toLowerCase().replace(/[^a-z0-9]+/g, "-");
   return (
     <div className="field-group">
-      <label>{label}</label>
+      <label htmlFor={fieldId}>{label}</label>
       {type === "color"
         ? <div className="color-row">
-            <input type="color" value={value} onChange={(e) => onChange(e.target.value)} />
+            <input type="color" id={fieldId} value={value} onChange={(e) => onChange(e.target.value)} />
             <span className="color-val">{value}</span>
           </div>
-        : <input type={type} value={value} onChange={(e) => onChange(e.target.value)} placeholder={placeholder} spellCheck={false} />
+        : <input type={type} id={fieldId} value={value} onChange={(e) => onChange(e.target.value)} placeholder={placeholder} spellCheck={false} />
       }
     </div>
   );
 }
 
-function ValidateBtn({ label, action }: { label: string; action: () => Promise<any> }) {
+function ValidateBtn({ label, action, resetKey = "" }: { label: string; action: () => Promise<ValidationResult>; resetKey?: string }) {
   const [state, setState] = useState<"idle" | "loading" | "ok" | "err">("idle");
   const [msg, setMsg] = useState("");
+
+  // Reset validation state when the underlying form data changes
+  useEffect(() => {
+    setState("idle");
+    setMsg("");
+  }, [resetKey]);
 
   async function run() {
     setState("loading");
@@ -398,20 +408,41 @@ function ValidateBtn({ label, action }: { label: string; action: () => Promise<a
 }
 
 // ─── App ──────────────────────────────────────────────────────────────────────
+const POLL_INTERVAL_MS = 10_000;
+
+type ActionState = "idle" | "loading";
+
 export default function App() {
   const [loggedIn, setLoggedIn] = useState(false);
   const [status, setStatus] = useState<BotStatus | null>(null);
+  const [pollError, setPollError] = useState(false);
+  const [actionState, setActionState] = useState<ActionState>("idle");
 
   const fetchStatus = useCallback(async () => {
-    try { setStatus(await botApi.status()); } catch {}
+    try {
+      setStatus(await botApi.status());
+      setPollError(false);
+    } catch {
+      setPollError(true);
+    }
   }, []);
 
   useEffect(() => {
     if (!loggedIn) return;
     fetchStatus();
-    const id = setInterval(fetchStatus, 10_000);
+    const id = setInterval(fetchStatus, POLL_INTERVAL_MS);
     return () => clearInterval(id);
   }, [loggedIn, fetchStatus]);
+
+  async function withAction(action: () => Promise<unknown>) {
+    setActionState("loading");
+    try {
+      await action();
+      await fetchStatus();
+    } finally {
+      setActionState("idle");
+    }
+  }
 
   if (!loggedIn) return <LoginScreen onLogin={() => setLoggedIn(true)} />;
 
@@ -424,18 +455,21 @@ export default function App() {
           <span className="logo-bracket">]</span>
         </div>
         <div className="topbar-right">
-          <span className={`dot ${status?.running ? "dot-green" : "dot-red"}`} />
-          <span className="dim">{status?.running ? "BOT ONLINE" : "BOT OFFLINE"}</span>
+          <span className={`dot ${pollError ? "dot-red" : status?.running ? "dot-green" : "dot-red"}`} />
+          <span className="dim">
+            {pollError ? "POLL ERROR" : status?.running ? "BOT ONLINE" : "BOT OFFLINE"}
+          </span>
           <button className="btn-xs" onClick={() => setLoggedIn(false)}>DISCONNECT</button>
         </div>
       </header>
       <main className="main-grid">
         <StatusCard
           status={status}
-          onStart={async () => { await botApi.start(); fetchStatus(); }}
-          onStop={async () => { await botApi.stop(); fetchStatus(); }}
-          onRestart={async () => { await botApi.restart(); fetchStatus(); }}
-          onColdRestart={async () => { await botApi.coldRestart(); fetchStatus(); }}
+          onStart={() => withAction(botApi.start)}
+          onStop={() => { if (window.confirm("Bot wirklich stoppen?")) withAction(botApi.stop); }}
+          onRestart={() => { if (window.confirm("Bot neustarten?")) withAction(botApi.restart); }}
+          onColdRestart={() => { if (window.confirm("Cold Restart: Bot komplett neustarten? Stream-Status wird zurückgesetzt.")) withAction(botApi.coldRestart); }}
+          actionDisabled={actionState === "loading"}
         />
         <ConfigForm onSaved={fetchStatus} />
       </main>
