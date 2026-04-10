@@ -1,25 +1,42 @@
 import { join } from "path";
-import { existsSync, mkdirSync } from "fs";
+import { existsSync, mkdirSync, writeFileSync, unlinkSync } from "fs";
 
 /**
  * Persistent storage directory.
  * On Render: set DATA_DIR env var to your mounted disk path (e.g. "/data").
  * Local dev fallbacks to project directory.
  */
-const DATA_DIR = process.env.DATA_DIR ?? join(import.meta.dir, "..");
-const CONFIG_PATH = join(DATA_DIR, "config.json");
+/**
+ * Resolve a writable data directory.
+ * Tries DATA_DIR env first, falls back to project dir, then /tmp.
+ */
+function resolveDataDir(): string {
+  const candidates = [
+    process.env.DATA_DIR,                       // e.g. "/data" on Render with persistent disk
+    join(import.meta.dir, ".."),                // project directory (local dev)
+    "/tmp",                                     // last resort (ephemeral but writable)
+  ].filter(Boolean) as string[];
 
-/** Ensure the persistent data directory exists */
-function ensureDataDir() {
-  try {
-    if (!existsSync(DATA_DIR)) {
-      mkdirSync(DATA_DIR, { recursive: true });
+  for (const dir of candidates) {
+    try {
+      if (!existsSync(dir)) mkdirSync(dir, { recursive: true });
+      // Verify it's actually writable
+      const testPath = join(dir, ".write_test_" + Date.now());
+      writeFileSync(testPath, "");
+      unlinkSync(testPath);
+      console.log(`[config] Data directory: ${dir}`);
+      return dir;
+    } catch (e: any) {
+      console.warn(`[config] Data directory ${dir} not writable: ${e.message}`);
     }
-  } catch (e: any) {
-    console.warn(`[config] Could not create data directory ${DATA_DIR}: ${e.message}`);
   }
+
+  // Should never reach here since /tmp is always writable
+  return "/tmp";
 }
-ensureDataDir();
+
+const DATA_DIR = resolveDataDir();
+const CONFIG_PATH = join(DATA_DIR, "config.json");
 
 export interface Config {
   // Discord
