@@ -103,6 +103,7 @@ const css = `
     margin: 0 auto;
   }
   @media (max-width: 700px) { .main-grid { grid-template-columns: 1fr; } }
+  @media (min-width: 1200px) { .main-grid { grid-template-columns: 1fr 1fr 1fr; } }
 
   /* ── Cards ─────────────────────────── */
   .card {
@@ -351,6 +352,40 @@ const css = `
   }
   .btn-xs:hover { border-color: var(--accent); color: var(--accent); }
   .btn-xs.btn-xs-green:hover { border-color: var(--green); color: var(--green); }
+
+  /* ── Console ───────────────────────── */
+  .console-output {
+    background: var(--bg);
+    border: 1px solid var(--border);
+    padding: 12px;
+    max-height: 400px;
+    overflow-y: auto;
+    font-family: var(--font-mono);
+    font-size: 11px;
+    line-height: 1.6;
+  }
+  .console-line {
+    display: flex;
+    gap: 8px;
+    padding: 2px 0;
+  }
+  .console-time {
+    color: var(--dim);
+    font-size: 10px;
+    flex-shrink: 0;
+    min-width: 70px;
+  }
+  .console-message {
+    flex: 1;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: pre-wrap;
+    word-break: break-word;
+  }
+  .console-empty {
+    text-align: center;
+    padding: 40px 20px;
+  }
 `;
 
 const style = document.createElement("style");

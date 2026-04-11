@@ -4,9 +4,11 @@ Custom Streamcord-Alternative: Twitch Live → Discord Notifications via Discord
 
 ## Features
 
-- **Multi-User Support** — Beliebige Streamer über Discord `/setup` Befehl hinzufügen
+- **Multi-Platform Support** — Twitch, Kick & YouTube über `/setup add <platform> <username>`
+- **Multi-User Support** — Beliebige Streamer über Discord Slash Commands hinzufügen
 - **PostgreSQL Storage** — Daten überleben Redeploys via Render Free PostgreSQL Database
-- **WebUI** — Zentrale Konfiguration für Discord & Twitch API
+- **WebUI** — Zentrale Konfiguration für Discord & Streaming APIs
+- **Live Console** — Echtzeit-Logs aller Bot-Aktivitäten in der WebUI
 - **Auto-Updating Embeds** — Viewer-Count & Titel aktualisieren sich live
 
 ## Struktur
@@ -44,18 +46,26 @@ Nachdem der Bot auf dem Server ist, stehen folgende Befehle zur Verfügung:
 
 | Befehl | Beschreibung |
 |---|---|
-| `/setup twitch <username>` | Twitch-Username speichern + Streamer-Rolle zuweisen |
-| `/setup remove` | Eigene Konfiguration löschen + Rolle entfernen |
-| `/setup list` | Eigenen konfigurierten Twitch-Username anzeigen |
+| `/setup add <platform> <username>` | Plattform-Username speichern + Streamer-Rolle zuweisen |
+| `/setup remove <platform>` | Eigene Konfiguration für eine Plattform löschen |
+| `/setup list [platform]` | Konfigurierte Usernames anzeigen (optional nach Plattform gefiltert) |
+
+**Beispiele:**
+- `/setup add twitch stupssy` — Twitch Username hinzufügen
+- `/setup add kick xqc` — Kick Username hinzufügen
+- `/setup remove twitch` — Nur Twitch-Konfiguration löschen
+- `/setup list` — Alle Plattformen anzeigen
+- `/setup list youtube` — Nur YouTube-Konfiguration anzeigen
 
 ### Für Admins (Manage Roles Permission)
 
 | Befehl | Beschreibung |
 |---|---|
-| `/admin list-all` | Alle konfigurierten Nutzer auflisten |
-| `/admin remove-user @user` | Konfiguration eines Nutzers löschen |
+| `/admin list-all <platform>` | Alle konfigurierten Nutzer für eine Plattform auflisten |
+| `/admin remove-user @user <platform>` | Konfiguration eines Nutzers für eine Plattform löschen |
 
-> **Ablauf:** Jeder Nutzer führt `/setup twitch ihrname` aus. Der Bot speichert die Zuordnung persistent in der PostgreSQL-Datenbank und weist automatisch die `DISCORD_STREAMER_ROLE_ID` zu. Ab dann wird der Kanal auf Live-Status überwacht.
+> **Ablauf:** Jeder Nutzer führt `/setup add twitch ihrname` aus. Der Bot speichert die Zuordnung persistent in der PostgreSQL-Datenbank und weist automatisch die `DISCORD_STREAMER_ROLE_ID` zu. Ab dann wird der Kanal auf Live-Status überwacht.
+> **Hinweis:** Aktuell wird nur **Twitch** unterstützt. Kick & YouTube folgen in zukünftigen Updates.
 
 ---
 
@@ -122,6 +132,21 @@ Dann Rechtsklick auf Server / Channel / Rolle → **ID kopieren**
 | Daten | Speicherort | Inhalt |
 |---|---|---|
 | `app_config` Tabelle | Render PostgreSQL (Free, 1 GB) | Discord/Twitch Einstellungen aus der WebUI |
-| `users` Tabelle | Render PostgreSQL (Free, 1 GB) | Discord User ID → Twitch Username Mappings |
+| `users` Tabelle | Render PostgreSQL (Free, 1 GB) | Discord User ID → Plattform + Username Mappings |
 
 Beide Tabellen liegen in der Render PostgreSQL-Datenbank und überleben Redeploys & Spin-Downs.
+
+### Datenbank-Schema
+
+```sql
+CREATE TABLE users (
+  discord_user_id TEXT NOT NULL,
+  discord_username TEXT NOT NULL,
+  platform TEXT NOT NULL,           -- 'twitch', 'kick', 'youtube'
+  username TEXT NOT NULL,
+  added_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  PRIMARY KEY (discord_user_id, platform)
+);
+```
+
+Jeder Discord-Nutzer kann **einen Username pro Plattform** speichern.

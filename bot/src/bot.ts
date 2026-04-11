@@ -1,7 +1,8 @@
 import { getConfig } from "./config";
-import { getAllTwitchUsernames } from "./users";
+import { getAllUsernames } from "./users";
 import { getStreamStatus, getUserInfo, type StreamInfo } from "./twitch";
 import { sendNotification, updateNotification } from "./discord";
+import { logEvent } from "./logger";
 
 export interface BotStatus {
   running: boolean;
@@ -45,12 +46,18 @@ function getOrCreateState(username: string): StreamState {
   return streamStates.get(username)!;
 }
 
-async function tickUser(twitchUsername: string): Promise<void> {
+async function tickUser(platform: string, username: string): Promise<void> {
+  // Currently only Twitch is supported, but the structure is ready for more platforms
+  if (platform !== "twitch") {
+    console.log(`[bot] Skipping ${platform} user ${username} (not yet supported)`);
+    return;
+  }
+
   const config = getConfig();
 
   try {
-    const stream = await getStreamStatus(twitchUsername);
-    const state = getOrCreateState(twitchUsername);
+    const stream = await getStreamStatus(username);
+    const state = getOrCreateState(username);
 
     status.lastCheck = new Date().toISOString();
     status.isLive = stream.isLive;
@@ -59,23 +66,25 @@ async function tickUser(twitchUsername: string): Promise<void> {
 
     if (stream.isLive && !state.wasLive) {
       // ── Went live → fetch avatar once, send new notification ──────────────
-      console.log(`[bot] ${twitchUsername} went live! Sending notification...`);
+      logEvent("🔴 LIVE", `${username} is now live on ${platform}: ${stream.title || "No title"} (${stream.gameName || "Unknown"})`);
+      console.log(`[bot] ${username} went live on ${platform}! Sending notification...`);
 
       if (!state.cachedAvatarUrl) {
         try {
-          const user = await getUserInfo(twitchUsername);
+          const user = await getUserInfo(username);
           state.cachedAvatarUrl = user?.profile_image_url;
         } catch {}
       }
 
-      const msgId = await sendNotification(stream, twitchUsername, state.cachedAvatarUrl);
+      const msgId = await sendNotification(stream, username, state.cachedAvatarUrl);
       if (msgId) {
         state.lastMessageId = msgId;
         status.notificationsSent++;
-        console.log(`[bot] Notification sent ✓ for ${twitchUsername} (message ${msgId})`);
+        logEvent("✓ Notification", `Sent/updated for ${username} (message ${msgId})`);
+        console.log(`[bot] Notification sent ✓ for ${username} (message ${msgId})`);
       } else {
         state.lastMessageId = null;
-        console.warn(`[bot] Failed to send notification for ${twitchUsername}`);
+        console.warn(`[bot] Failed to send notification for ${username}`);
       }
     } else if (stream.isLive && state.wasLive && state.lastMessageId) {
       // ── Already live → edit existing embed with fresh data ─────────────────
@@ -83,13 +92,14 @@ async function tickUser(twitchUsername: string): Promise<void> {
       const updateIntervalMs = config.updateIntervalMinutes * 60 * 1000;
 
       if (now - state.lastUpdateTime >= updateIntervalMs) {
-        await updateNotification(state.lastMessageId, stream, twitchUsername, state.cachedAvatarUrl);
+        await updateNotification(state.lastMessageId, stream, username, state.cachedAvatarUrl);
         state.lastUpdateTime = now;
-        console.log(`[bot] Notification updated for ${twitchUsername} (${Math.round(config.updateIntervalMinutes)}min interval)`);
+        console.log(`[bot] Notification updated for ${username} (${Math.round(config.updateIntervalMinutes)}min interval)`);
       }
     } else if (!stream.isLive && state.wasLive) {
       // ── Went offline → clear stored message ID ─────────────────────────────
-      console.log(`[bot] ${twitchUsername} went offline`);
+      logEvent("⚫ OFFLINE", `${username} ended their stream on ${platform}`);
+      console.log(`[bot] ${username} went offline on ${platform}`);
       state.lastMessageId = null;
       state.lastUpdateTime = 0;
     }
@@ -102,14 +112,14 @@ async function tickUser(twitchUsername: string): Promise<void> {
 }
 
 async function tick() {
-  const usernames = getAllTwitchUsernames();
+  const usernames = getAllUsernames();
   if (usernames.length === 0) {
-    status.lastError = "No Twitch users configured. Use /setup twitch <username> in Discord.";
+    status.lastError = "No users configured. Use /setup add <platform> <username> in Discord.";
     return;
   }
 
   // Poll all configured users in parallel
-  await Promise.all(usernames.map((username) => tickUser(username)));
+  await Promise.all(usernames.map(({ platform, username }) => tickUser(platform, username)));
 }
 
 export function startBot() {
@@ -117,6 +127,7 @@ export function startBot() {
   const config = getConfig();
   status.running = true;
   status.startTime = Date.now();
+  logEvent("▶ START", `Bot started with ${config.pollIntervalSeconds}s polling interval`);
   console.log(`[bot] Starting, polling every ${config.pollIntervalSeconds}s`);
   tick();
   interval = setInterval(tick, config.pollIntervalSeconds * 1000);
@@ -128,6 +139,7 @@ export function stopBot() {
     interval = null;
   }
   status.running = false;
+  logEvent("⏹ STOP", "Bot stopped");
   console.log("[bot] Stopped");
 }
 

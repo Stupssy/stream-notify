@@ -1,8 +1,9 @@
-import { Elysia } from "elysia";
+import { Elysia, t } from "elysia";
 import { getConfig, saveConfig } from "./config";
 import { status, startBot, stopBot, restartBot, coldRestartBot } from "./bot";
 import { validateBotToken } from "./discord";
 import { restartGateway } from "./gateway";
+import { createSSEStream, getRecentLogs } from "./logger";
 
 function authCheck(apiKey: string | undefined): boolean {
   return apiKey === getConfig().apiKey;
@@ -111,6 +112,25 @@ export function createServer() {
       if (!authCheck(headers["x-api-key"])) return new Response("Unauthorized", { status: 401 });
       const valid = await validateBotToken();
       return { valid };
+    })
+
+    // SSE endpoint for real-time log streaming
+    .get("/api/logs/stream", ({ query, headers, set }) => {
+      const apiKey = (query as any).api_key ?? headers["x-api-key"];
+      if (!authCheck(apiKey)) return new Response("Unauthorized", { status: 401 });
+      
+      set.headers["Content-Type"] = "text/event-stream";
+      set.headers["Cache-Control"] = "no-cache";
+      set.headers["Connection"] = "keep-alive";
+      set.headers["X-Accel-Buffering"] = "no"; // Disable nginx buffering
+      
+      return createSSEStream();
+    })
+
+    // Get recent logs (for initial load)
+    .get("/api/logs", ({ headers }) => {
+      if (!authCheck(headers["x-api-key"])) return new Response("Unauthorized", { status: 401 });
+      return getRecentLogs(100);
     });
 
   return app;

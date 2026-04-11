@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback, useRef } from "react";
-import { botApi, exportConfig, importConfig, type ValidationResult } from "./api";
+import { botApi, exportConfig, importConfig, type ValidationResult, type LogEntry, createLogStream } from "./api";
 
 interface BotStatus {
   running: boolean;
@@ -406,6 +406,140 @@ function ValidateBtn({ label, action, resetKey = "" }: { label: string; action: 
   );
 }
 
+// ─── Console ──────────────────────────────────────────────────────────────────
+function Console() {
+  const [logs, setLogs] = useState<LogEntry[]>([]);
+  const [filter, setFilter] = useState<"all" | "error" | "command" | "event">("all");
+  const [autoScroll, setAutoScroll] = useState(true);
+  const consoleRef = useRef<HTMLDivElement>(null);
+  const eventSourceRef = useRef<EventSource | null>(null);
+
+  // Auto-scroll to bottom
+  useEffect(() => {
+    if (autoScroll && consoleRef.current) {
+      consoleRef.current.scrollTop = consoleRef.current.scrollHeight;
+    }
+  }, [logs, autoScroll]);
+
+  // Connect to SSE log stream
+  useEffect(() => {
+    // Load initial logs
+    botApi.getLogs().then((recentLogs) => {
+      setLogs(recentLogs);
+    }).catch(() => {});
+
+    // Connect to live stream
+    const es = createLogStream();
+    eventSourceRef.current = es;
+
+    es.addEventListener("message", (event) => {
+      try {
+        const logEntry: LogEntry = JSON.parse(event.data);
+        setLogs((prev) => {
+          const updated = [...prev, logEntry];
+          // Keep last 500 logs
+          if (updated.length > 500) {
+            return updated.slice(-500);
+          }
+          return updated;
+        });
+      } catch {}
+    });
+
+    es.onerror = () => {
+      console.warn("[console] SSE connection lost, reconnecting...");
+      es.close();
+      // Reconnect after 3 seconds
+      setTimeout(() => {
+        const newEs = createLogStream();
+        eventSourceRef.current = newEs;
+        newEs.addEventListener("message", (event) => {
+          try {
+            const logEntry: LogEntry = JSON.parse(event.data);
+            setLogs((prev) => {
+              const updated = [...prev, logEntry];
+              if (updated.length > 500) {
+                return updated.slice(-500);
+              }
+              return updated;
+            });
+          } catch {}
+        });
+      }, 3000);
+    };
+
+    return () => {
+      es.close();
+    };
+  }, []);
+
+  function clearLogs() {
+    setLogs([]);
+  }
+
+  function toggleAutoScroll() {
+    setAutoScroll(!autoScroll);
+  }
+
+  // Filter logs
+  const filteredLogs = filter === "all" ? logs : logs.filter((log) => log.level === filter);
+
+  // Get color for log level
+  function getLogColor(level: LogEntry["level"]): string {
+    switch (level) {
+      case "error": return "var(--red)";
+      case "warn": return "var(--orange)";
+      case "command": return "var(--accent)";
+      case "event": return "var(--green)";
+      default: return "var(--dim)";
+    }
+  }
+
+  // Format timestamp
+  function formatTime(isoString: string): string {
+    return new Date(isoString).toLocaleTimeString("de-DE");
+  }
+
+  return (
+    <div className="card" style={{ gridColumn: "1 / -1" }}>
+      <div className="card-header">
+        <span>KONSOLE</span>
+        <div className="header-actions">
+          <button className="btn-xs" onClick={clearLogs} title="Konsole leeren">🗑 CLEAR</button>
+          <button className={`btn-xs ${autoScroll ? "btn-xs-green" : ""}`} onClick={toggleAutoScroll} title="Auto-Scroll">
+            {autoScroll ? "⬇ AUTO-SCROLL AN" : "⬇ AUTO-SCROLL AUS"}
+          </button>
+        </div>
+      </div>
+
+      <div className="tabs">
+        {(["all", "event", "command", "error"] as const).map((f) => (
+          <button key={f} className={`tab ${filter === f ? "active" : ""}`} onClick={() => setFilter(f)}>
+            {f.toUpperCase()}
+          </button>
+        ))}
+      </div>
+
+      <div className="console-output" ref={consoleRef}>
+        {filteredLogs.length === 0 ? (
+          <div className="console-empty">
+            <span className="dim">Keine Logs vorhanden</span>
+          </div>
+        ) : (
+          filteredLogs.map((log) => (
+            <div key={log.id} className="console-line">
+              <span className="console-time">{formatTime(log.timestamp)}</span>
+              <span className="console-message" style={{ color: getLogColor(log.level) }}>
+                {log.message}
+              </span>
+            </div>
+          ))
+        )}
+      </div>
+    </div>
+  );
+}
+
 // ─── App ──────────────────────────────────────────────────────────────────────
 const POLL_INTERVAL_MS = 10_000;
 
@@ -471,6 +605,7 @@ export default function App() {
           actionDisabled={actionState === "loading"}
         />
         <ConfigForm onSaved={fetchStatus} />
+        <Console />
       </main>
     </div>
   );

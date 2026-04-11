@@ -27,16 +27,20 @@ export async function initDb(): Promise<void> {
 
     // Create tables if they don't exist
     await client.query(`
+      DROP TABLE IF EXISTS users;
+
       CREATE TABLE IF NOT EXISTS app_config (
         key TEXT PRIMARY KEY,
         value TEXT NOT NULL
       );
 
       CREATE TABLE IF NOT EXISTS users (
-        discord_user_id TEXT PRIMARY KEY,
+        discord_user_id TEXT NOT NULL,
         discord_username TEXT NOT NULL,
-        twitch_username TEXT NOT NULL,
-        added_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+        platform TEXT NOT NULL,
+        username TEXT NOT NULL,
+        added_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+        PRIMARY KEY (discord_user_id, platform)
       );
     `);
     console.log("[db] Tables ready ✓");

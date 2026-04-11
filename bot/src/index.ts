@@ -1,6 +1,7 @@
+import "./logger"; // Must be first - wraps console methods to capture all output
 import { initDb } from "./db";
 import { initConfig, getConfig } from "./config";
-import { initUsers, getAllTwitchUsernames } from "./users";
+import { initUsers, getAllUsernames } from "./users";
 import { startBot } from "./bot";
 import { startGateway } from "./gateway";
 import { createServer } from "./server";
@@ -61,12 +62,13 @@ async function main() {
 
   // ── Auto-start polling bot ─────────────────────────────────────────────────────
   const { enabled } = config;
-  const twitchUsernames = getAllTwitchUsernames();
-  if (enabled && twitchUsernames.length > 0) {
-    console.log(`[init] Auto-starting bot for ${twitchUsernames.length} user(s): ${twitchUsernames.join(", ")}`);
+  const users = getAllUsernames();
+  if (enabled && users.length > 0) {
+    const userList = users.map(u => `${u.platform}:${u.username}`).join(", ");
+    console.log(`[init] Auto-starting bot for ${users.length} user(s): ${userList}`);
     startBot();
   } else {
-    console.log("[init] Bot not started — configure via WebUI or /setup in Discord");
+    console.log("[init] Bot not started — configure via WebUI or /setup add in Discord");
   }
 }
 

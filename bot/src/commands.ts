@@ -7,34 +7,67 @@ import {
   type ChatInputCommandInteraction,
 } from "discord.js";
 import { getConfig } from "./config";
-import { addUser, removeUserByDiscordId, getAllUsers, getUserByDiscordId } from "./users";
+import { addUser, removeUserByDiscordId, getAllUsers, getUsersByDiscordId, getUsersByDiscordIdAndPlatform } from "./users";
+import { logCommand } from "./logger";
 
 // ── Command definitions ────────────────────────────────────────────────────────
 
 export const commands = [
   new SlashCommandBuilder()
     .setName("setup")
-    .setDescription("Configure your Twitch channel for stream notifications")
+    .setDescription("Configure streaming platform notifications")
     .addSubcommand((sub) =>
       sub
-        .setName("twitch")
-        .setDescription("Link your Twitch username to the bot")
+        .setName("add")
+        .setDescription("Link a platform username to the bot")
+        .addStringOption((opt) =>
+          opt
+            .setName("platform")
+            .setDescription("Streaming platform")
+            .setRequired(true)
+            .addChoices(
+              { name: "Twitch", value: "twitch" },
+              { name: "Kick", value: "kick" },
+              { name: "YouTube", value: "youtube" }
+            )
+        )
         .addStringOption((opt) =>
           opt
             .setName("username")
-            .setDescription("Your Twitch username (e.g. stupssy)")
+            .setDescription("Your username on the platform")
             .setRequired(true)
         )
     )
     .addSubcommand((sub) =>
       sub
         .setName("remove")
-        .setDescription("Remove your Twitch configuration")
+        .setDescription("Remove your platform configuration")
+        .addStringOption((opt) =>
+          opt
+            .setName("platform")
+            .setDescription("Streaming platform")
+            .setRequired(true)
+            .addChoices(
+              { name: "Twitch", value: "twitch" },
+              { name: "Kick", value: "kick" },
+              { name: "YouTube", value: "youtube" }
+            )
+        )
     )
     .addSubcommand((sub) =>
       sub
         .setName("list")
-        .setDescription("Show your configured Twitch username")
+        .setDescription("Show your configured usernames")
+        .addStringOption((opt) =>
+          opt
+            .setName("platform")
+            .setDescription("Streaming platform (optional, shows all)")
+            .addChoices(
+              { name: "Twitch", value: "twitch" },
+              { name: "Kick", value: "kick" },
+              { name: "YouTube", value: "youtube" }
+            )
+        )
     )
     .toJSON(),
 
@@ -45,17 +78,39 @@ export const commands = [
     .addSubcommand((sub) =>
       sub
         .setName("list-all")
-        .setDescription("List all configured Twitch users")
+        .setDescription("List all configured users for a platform")
+        .addStringOption((opt) =>
+          opt
+            .setName("platform")
+            .setDescription("Streaming platform")
+            .setRequired(true)
+            .addChoices(
+              { name: "Twitch", value: "twitch" },
+              { name: "Kick", value: "kick" },
+              { name: "YouTube", value: "youtube" }
+            )
+        )
     )
     .addSubcommand((sub) =>
       sub
         .setName("remove-user")
-        .setDescription("Remove a user's Twitch configuration")
+        .setDescription("Remove a user's platform configuration")
         .addUserOption((opt) =>
           opt
             .setName("user")
             .setDescription("The Discord user to remove")
             .setRequired(true)
+        )
+        .addStringOption((opt) =>
+          opt
+            .setName("platform")
+            .setDescription("Streaming platform")
+            .setRequired(true)
+            .addChoices(
+              { name: "Twitch", value: "twitch" },
+              { name: "Kick", value: "kick" },
+              { name: "YouTube", value: "youtube" }
+            )
         )
     )
     .toJSON(),
@@ -100,23 +155,34 @@ export async function handleInteraction(interaction: ChatInputCommandInteraction
 
 async function handleSetup(interaction: ChatInputCommandInteraction): Promise<void> {
   const sub = interaction.options.getSubcommand();
+  const platform = interaction.options.getString("platform", false)?.toLowerCase();
+  const username = interaction.options.getString("username", false)?.toLowerCase();
   const userId = interaction.user.id;
-  const username = interaction.user.username;
+  const discordUsername = interaction.user.username;
 
-  if (sub === "twitch") {
-    const twitchUsername = interaction.options.getString("username", true).trim().toLowerCase();
+  if (sub === "add") {
+    logCommand("setup add", discordUsername, `${platform}: ${username}`);
 
     // Validate: no spaces, reasonable length
-    if (/\s/.test(twitchUsername) || twitchUsername.length < 3 || twitchUsername.length > 25) {
+    if (!username || /\s/.test(username) || username.length < 3 || username.length > 25) {
       await interaction.reply({
-        content: "❌ Invalid Twitch username. Must be 3-25 characters, no spaces.",
+        content: "❌ Invalid username. Must be 3-25 characters, no spaces.",
+        flags: MessageFlags.Ephemeral,
+      });
+      return;
+    }
+
+    // Validate platform
+    if (!["twitch", "kick", "youtube"].includes(platform || "")) {
+      await interaction.reply({
+        content: "❌ Invalid platform. Choose from: twitch, kick, youtube",
         flags: MessageFlags.Ephemeral,
       });
       return;
     }
 
     // Add to user config
-    await addUser(userId, username, twitchUsername);
+    await addUser(userId, discordUsername, username, platform!);
 
     // Assign streamer role if configured
     const { discordGuildId, discordStreamerRoleId } = getConfig();
@@ -135,11 +201,12 @@ async function handleSetup(interaction: ChatInputCommandInteraction): Promise<vo
 
     const roleMsg = roleAssigned ? "\n✅ Streamer role assigned!" : "";
     await interaction.reply({
-      content: `✅ Twitch username **${twitchUsername}** saved! You will now be monitored for live streams.${roleMsg}`,
+      content: `✅ **${platform}** username **${username}** saved! You will now be monitored for live streams.${roleMsg}`,
       flags: MessageFlags.Ephemeral,
     });
   } else if (sub === "remove") {
-    const removed = await removeUserByDiscordId(userId);
+    logCommand("setup remove", discordUsername, platform || "all");
+    const removed = await removeUserByDiscordId(userId, platform || undefined);
 
     // Remove streamer role if configured
     const { discordGuildId, discordStreamerRoleId } = getConfig();
@@ -158,7 +225,7 @@ async function handleSetup(interaction: ChatInputCommandInteraction): Promise<vo
 
     if (!removed) {
       await interaction.reply({
-        content: "❌ You have no Twitch configuration to remove.",
+        content: "❌ You have no configuration to remove.",
         flags: MessageFlags.Ephemeral,
       });
       return;
@@ -166,20 +233,29 @@ async function handleSetup(interaction: ChatInputCommandInteraction): Promise<vo
 
     const roleMsg = roleRemoved ? "\n🔻 Streamer role removed." : "";
     await interaction.reply({
-      content: `✅ Your Twitch configuration has been removed.${roleMsg}`,
+      content: `✅ Your **${platform || "platform"}** configuration has been removed.${roleMsg}`,
       flags: MessageFlags.Ephemeral,
     });
   } else if (sub === "list") {
-    const user = getUserByDiscordId(userId);
-    if (!user) {
+    logCommand("setup list", discordUsername, platform || "all");
+    const users = platform 
+      ? getUsersByDiscordIdAndPlatform(userId, platform) 
+      : getUsersByDiscordId(userId);
+    
+    if (!users || users.length === 0) {
+      const msg = platform 
+        ? `❌ You have no ${platform} username configured. Use \`/setup add ${platform} <username>\` to set one.`
+        : "❌ You have no usernames configured. Use `/setup add <platform> <username>` to set one.";
       await interaction.reply({
-        content: "❌ You have no Twitch username configured. Use `/setup twitch <username>` to set one.",
+        content: msg,
         flags: MessageFlags.Ephemeral,
       });
       return;
     }
+    
+    const lines = users.map((u) => `• **${u.platform}**: ${u.username}`).join("\n");
     await interaction.reply({
-      content: `📺 Your configured Twitch username: **${user.twitchUsername}**`,
+      content: `📺 Your configured usernames:\n${lines}`,
       flags: MessageFlags.Ephemeral,
     });
   }
@@ -197,15 +273,17 @@ async function handleAdmin(interaction: ChatInputCommandInteraction): Promise<vo
   }
 
   const sub = interaction.options.getSubcommand();
+  const platform = interaction.options.getString("platform", false)?.toLowerCase();
 
   if (sub === "list-all") {
-    const users = getAllUsers();
+    logCommand("admin list-all", interaction.user.username, platform || "all");
+    const users = getAllUsers(platform || undefined);
     if (users.length === 0) {
       await interaction.reply({ content: "📋 No users configured.", flags: MessageFlags.Ephemeral });
       return;
     }
     const lines = users.map(
-      (u) => `• <@${u.discordUserId}> → twitch.tv/${u.twitchUsername} (added ${u.addedAt})`
+      (u) => `• <@${u.discordUserId}> → ${u.platform}.tv/${u.username} (added ${u.addedAt})`
     );
     await interaction.reply({
       content: `📋 **Configured users (${users.length}):**\n${lines.join("\n")}`,
@@ -213,7 +291,8 @@ async function handleAdmin(interaction: ChatInputCommandInteraction): Promise<vo
     });
   } else if (sub === "remove-user") {
     const target = interaction.options.getUser("user", true);
-    const removed = await removeUserByDiscordId(target.id);
+    logCommand("admin remove-user", interaction.user.username, `target: ${target.username}, platform: ${platform}`);
+    const removed = await removeUserByDiscordId(target.id, platform || undefined);
 
     // Also try to remove the streamer role
     const { discordGuildId, discordStreamerRoleId } = getConfig();

@@ -26,6 +26,13 @@ export interface ValidationResult {
   error?: string;
 }
 
+export interface LogEntry {
+  id: number;
+  timestamp: string;
+  level: "info" | "warn" | "error" | "command" | "event";
+  message: string;
+}
+
 export interface BotStatusResponse {
   running: boolean;
   lastCheck: string | null;
@@ -52,7 +59,14 @@ export const botApi = {
   restart: () => api<{ ok: boolean }>("/api/bot/restart", { method: "POST" }),
   coldRestart: () => api<{ ok: boolean; message?: string }>("/api/bot/cold-restart", { method: "POST" }),
   validateDiscord: () => api<ValidationResult>("/api/validate/discord"),
+  getLogs: () => api<LogEntry[]>("/api/logs"),
 };
+
+export function createLogStream(): EventSource {
+  const url = `${getBaseUrl()}/api/logs/stream`;
+  const eventSource = new EventSource(`${url}?api_key=${getApiKey()}`);
+  return eventSource;
+}
 
 export function setApiKey(key: string) {
   localStorage.setItem("sn_api_key", key);

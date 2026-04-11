@@ -225,18 +225,26 @@ Nachdem der Bot auf dem Server ist und die WebUI konfiguriert wurde:
 
 | Befehl | Beschreibung |
 |---|---|
-| `/setup twitch <username>` | Twitch-Username speichern + Streamer-Rolle zuweisen |
-| `/setup remove` | Eigene Konfiguration löschen + Rolle entfernen |
-| `/setup list` | Eigenen konfigurierten Twitch-Username anzeigen |
+| `/setup add <platform> <username>` | Plattform-Username speichern + Streamer-Rolle zuweisen |
+| `/setup remove <platform>` | Eigene Konfiguration für eine Plattform löschen |
+| `/setup list [platform]` | Konfigurierte Usernames anzeigen (optional nach Plattform gefiltert) |
+
+**Beispiele:**
+- `/setup add twitch stupssy` — Twitch Username hinzufügen
+- `/setup add kick xqc` — Kick Username hinzufügen
+- `/setup remove twitch` — Nur Twitch-Konfiguration löschen
+- `/setup list` — Alle Plattformen anzeigen
+- `/setup list youtube` — Nur YouTube-Konfiguration anzeigen
 
 ### Für Admins (Manage Roles Permission)
 
 | Befehl | Beschreibung |
 |---|---|
-| `/admin list-all` | Alle konfigurierten Nutzer auflisten |
-| `/admin remove-user @user` | Konfiguration eines Nutzers löschen |
+| `/admin list-all <platform>` | Alle konfigurierten Nutzer für eine Plattform auflisten |
+| `/admin remove-user @user <platform>` | Konfiguration eines Nutzers für eine Plattform löschen |
 
-> **Ablauf:** Jeder Nutzer führt `/setup twitch ihrname` aus. Der Bot speichert die Zuordnung persistent in der PostgreSQL-Datenbank und weist automatisch die `DISCORD_STREAMER_ROLE_ID` zu. Ab dann wird der Kanal auf Live-Status überwacht.
+> **Ablauf:** Jeder Nutzer führt `/setup add twitch ihrname` aus. Der Bot speichert die Zuordnung persistent in der PostgreSQL-Datenbank und weist automatisch die `DISCORD_STREAMER_ROLE_ID` zu. Ab dann wird der Kanal auf Live-Status überwacht.
+> **Hinweis:** Aktuell wird nur **Twitch** unterstützt. Kick & YouTube folgen in zukünftigen Updates.
 
 ---
 
@@ -293,11 +301,14 @@ Enthält alle Einstellungen aus der WebUI (Discord, Twitch, Notifications, Bot-S
 
 ### `users` Tabelle
 
-Enthält die Discord User → Twitch Username Mappings (via `/setup` erstellt).
+Enthält die Discord User → Plattform + Username Mappings (via `/setup add` erstellt).
 
-| discord_user_id | discord_username | twitch_username | added_at |
-|---|---|---|---|
-| `555666777` | `MaxMustermann` | `stupssy` | `2025-04-10 12:00:00+00` |
+| discord_user_id | discord_username | platform | username | added_at |
+|---|---|---|---|---|
+| `555666777` | `MaxMustermann` | `twitch` | `stupssy` | `2025-04-10 12:00:00+00` |
+| `555666777` | `MaxMustermann` | `kick` | `maxstream` | `2025-04-10 12:05:00+00` |
+
+> Jeder Discord-Nutzer kann **einen Username pro Plattform** speichern. Der Primary Key ist `(discord_user_id, platform)`.
 
 ---
 
@@ -324,7 +335,7 @@ Dann:
 | Server (Guild) ID | Rechtsklick auf Server → ID kopieren |
 | Channel ID | Rechtsklick auf Channel → ID kopieren |
 | Ping Rollen-ID | Rolle die bei Go-Live gepingt wird (leer = kein Ping) |
-| Streamer Rollen-ID | Rolle die via `/setup twitch` zugewiesen wird |
+| Streamer Rollen-ID | Rolle die via `/setup add` zugewiesen wird |
 
 ### Twitch Tab
 
@@ -376,11 +387,12 @@ Dann:
   3. Bot hat Permission im Channel? → `Send Messages` + `Embed Links`
   4. Bot ist online? → Discord → Onlinestatus prüfen
   5. Twitch Credentials korrekt? → WebUI → Twitch Tab → Client ID + Secret prüfen
-  6. Mindestens ein Nutzer via `/setup twitch <username>` konfiguriert?
+  6. Mindestens ein Nutzer via `/setup add twitch <username>` konfiguriert?
+  7. **WebUI Console prüfen:** Zeigt Fehler oder Status-Updates an
 
 ### `/setup` Befehl erscheint nicht
 
-- **Lösung:** Bis zu 5 Minuten warten (Discord cachte Slash Commands)
+- **Lösung:** Bis zu 5 Minuten warten (Discord cachet Slash Commands)
 - **Erzwingen:** Server verlassen → Bot neu einladen (OAuth2 URL aus Schritt 1)
 
 ### Config geht nach Redeploy verloren
@@ -394,6 +406,19 @@ Dann:
 - **401 Unauthorized:** Client ID oder Secret falsch → Twitch Developer Console prüfen
 - **404 Not Found:** Twitch Username existiert nicht → Groß-/Kleinschreibung prüfen
 - **429 Too Many Requests:** Poll Interval zu niedrig → Mindestens 30 Sekunden empfehlen
+
+### WebUI Console
+
+Die WebUI zeigt in der **Konsole** alle Bot-Aktivitäten in Echtzeit:
+- 🔴 **LIVE** — Streamer geht live
+- ⚫ **OFFLINE** — Streamer geht offline
+- ✓ **Notification** — Discord-Nachricht gesendet/aktualisiert
+- ▶ **START** / ⏹ **STOP** — Bot gestartet/gestoppt
+- `/setup add` / `/setup remove` — Discord-Befehle
+- Fehler und Warnungen
+
+**Filter:** ALL, EVENT, COMMAND, ERROR  
+**Features:** Auto-Scroll, Clear, Farbcodierung nach Level
 
 ---
 
