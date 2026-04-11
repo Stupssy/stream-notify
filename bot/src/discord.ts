@@ -2,6 +2,7 @@ import { getConfig } from "./config";
 import type { StreamInfo } from "./twitch";
 
 const BASE = "https://discord.com/api/v10";
+const DISCORD_TIMEOUT_MS = 10_000; // 10 seconds
 
 function headers() {
   return {
@@ -10,26 +11,53 @@ function headers() {
   };
 }
 
+async function fetchWithTimeout(url: string, init?: RequestInit): Promise<Response> {
+  const controller = new AbortController();
+  const timeoutId = setTimeout(() => controller.abort(), DISCORD_TIMEOUT_MS);
+
+  try {
+    const response = await fetch(url, {
+      ...init,
+      signal: controller.signal,
+    });
+    return response;
+  } finally {
+    clearTimeout(timeoutId);
+  }
+}
+
 export async function hasMemberRole(userId: string): Promise<boolean> {
   const { discordGuildId, discordStreamerRoleId } = getConfig();
   if (!discordStreamerRoleId) return true;
-  const res = await fetch(`${BASE}/guilds/${discordGuildId}/members/${userId}`, {
-    headers: headers(),
-  });
-  if (!res.ok) return false;
-  const member = await res.json();
-  return member.roles?.includes(discordStreamerRoleId) ?? false;
+  
+  try {
+    const res = await fetchWithTimeout(`${BASE}/guilds/${discordGuildId}/members/${userId}`, {
+      headers: headers(),
+    });
+    if (!res.ok) return false;
+    const member = await res.json();
+    return member.roles?.includes(discordStreamerRoleId) ?? false;
+  } catch (error) {
+    console.error(`[discord] hasMemberRole error for ${userId}:`, error.message);
+    return false;
+  }
 }
 
 export async function getMemberByTwitchUsername(twitchUsername: string): Promise<string | null> {
   const { discordGuildId } = getConfig();
-  const res = await fetch(
-    `${BASE}/guilds/${discordGuildId}/members/search?query=${twitchUsername}&limit=5`,
-    { headers: headers() }
-  );
-  if (!res.ok) return null;
-  const members = await res.json();
-  return members?.[0]?.user?.id ?? null;
+  
+  try {
+    const res = await fetchWithTimeout(
+      `${BASE}/guilds/${discordGuildId}/members/search?query=${twitchUsername}&limit=5`,
+      { headers: headers() }
+    );
+    if (!res.ok) return null;
+    const members = await res.json();
+    return members?.[0]?.user?.id ?? null;
+  } catch (error) {
+    console.error(`[discord] getMemberByTwitchUsername error for ${twitchUsername}:`, error.message);
+    return null;
+  }
 }
 
 /**
@@ -114,20 +142,26 @@ export async function sendNotification(
   if (!config.discordChannelId) return null;
 
   const payload = buildEmbed(stream, twitchUsername, twitchAvatarUrl, config);
-  const res = await fetch(`${BASE}/channels/${config.discordChannelId}/messages`, {
-    method: "POST",
-    headers: headers(),
-    body: JSON.stringify(payload),
-  });
+  
+  try {
+    const res = await fetchWithTimeout(`${BASE}/channels/${config.discordChannelId}/messages`, {
+      method: "POST",
+      headers: headers(),
+      body: JSON.stringify(payload),
+    });
 
-  if (!res.ok) {
-    const err = await res.text().catch(() => res.status.toString());
-    console.error(`[discord] sendNotification failed (${res.status}): ${err}`);
+    if (!res.ok) {
+      const err = await res.text().catch(() => res.status.toString());
+      console.error(`[discord] sendNotification failed (${res.status}): ${err}`);
+      return null;
+    }
+
+    const msg = await res.json();
+    return msg.id ?? null;
+  } catch (error) {
+    console.error("[discord] sendNotification error:", error.message);
     return null;
   }
-
-  const msg = await res.json();
-  return msg.id ?? null;
 }
 
 /**
@@ -146,27 +180,32 @@ export async function updateNotification(
   const configNoPing = { ...config, discordNotifyRoleId: "" };
   const payload = buildEmbed(stream, twitchUsername, twitchAvatarUrl, configNoPing);
 
-  const res = await fetch(
-    `${BASE}/channels/${config.discordChannelId}/messages/${messageId}`,
-    {
-      method: "PATCH",
-      headers: headers(),
-      body: JSON.stringify({ embeds: payload.embeds }),
-    }
-  );
+  try {
+    const res = await fetchWithTimeout(
+      `${BASE}/channels/${config.discordChannelId}/messages/${messageId}`,
+      {
+        method: "PATCH",
+        headers: headers(),
+        body: JSON.stringify({ embeds: payload.embeds }),
+      }
+    );
 
-  if (!res.ok) {
-    const err = await res.text().catch(() => res.status.toString());
-    console.error(`[discord] updateNotification failed (${res.status}): ${err}`);
+    if (!res.ok) {
+      const err = await res.text().catch(() => res.status.toString());
+      console.error(`[discord] updateNotification failed (${res.status}): ${err}`);
+      return false;
+    }
+
+    return true;
+  } catch (error) {
+    console.error("[discord] updateNotification error:", error.message);
     return false;
   }
-
-  return true;
 }
 
 export async function validateBotToken(): Promise<boolean> {
   try {
-    const res = await fetch(`${BASE}/users/@me`, { headers: headers() });
+    const res = await fetchWithTimeout(`${BASE}/users/@me`, { headers: headers() });
     return res.ok;
   } catch {
     return false;
