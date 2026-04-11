@@ -10,8 +10,15 @@ const logBuffer: LogEntry[] = [];
 const MAX_LOGS = 500; // Keep last 500 entries
 let logIdCounter = 0;
 
-// SSE clients
-const sseClients = new Set<ReadableStreamDefaultWriter>();
+// SSE clients - store callbacks instead of writers
+interface SSEClient {
+  id: number;
+  send: (data: string) => void;
+  onClose: () => void;
+}
+
+const sseClients = new Map<number, SSEClient>();
+let clientIdCounter = 0;
 
 export function addLog(level: LogEntry["level"], message: string): void {
   const entry: LogEntry = {
@@ -32,20 +39,13 @@ export function addLog(level: LogEntry["level"], message: string): void {
 
 function broadcastLog(entry: LogEntry): void {
   const data = `data: ${JSON.stringify(entry)}\n\n`;
-  
-  const toRemove: Array<ReadableStreamDefaultWriter> = [];
-  
-  for (const writer of sseClients) {
+
+  for (const [, client] of sseClients) {
     try {
-      writer.write(data);
+      client.send(data);
     } catch {
-      toRemove.push(writer);
+      client.onClose();
     }
-  }
-  
-  // Remove disconnected clients
-  for (const writer of toRemove) {
-    sseClients.delete(writer);
   }
 }
 
@@ -53,26 +53,27 @@ export function getRecentLogs(count: number = 100): LogEntry[] {
   return logBuffer.slice(-count);
 }
 
-export function createSSEStream(): ReadableStream {
-  let writer: ReadableStreamDefaultWriter;
+export function registerSSEClient(send: (data: string) => void, onClose: () => void): number {
+  const id = ++clientIdCounter;
+  sseClients.set(id, { id, send, onClose });
+
+  // Send recent history
+  const recent = getRecentLogs(50);
+  let history = "";
+  for (const entry of recent) {
+    history += `data: ${JSON.stringify(entry)}\n\n`;
+  }
   
-  const stream = new ReadableStream({
-    start(w) {
-      writer = w;
-      sseClients.add(writer);
-      
-      // Send recent history first
-      const recent = getRecentLogs(50);
-      for (const entry of recent) {
-        w.write(`data: ${JSON.stringify(entry)}\n\n`);
-      }
-    },
-    cancel() {
-      sseClients.delete(writer);
-    }
-  });
-  
-  return stream;
+  // Send history in one go
+  if (history) {
+    send(history);
+  }
+
+  return id;
+}
+
+export function unregisterSSEClient(id: number): void {
+  sseClients.delete(id);
 }
 
 // Wrap console methods to capture all output
@@ -100,7 +101,7 @@ console.error = function(...args: any[]) {
 
 // Helper for special event types
 export function logCommand(command: string, user: string, details?: string): void {
-  const message = details 
+  const message = details
     ? `/${command} by ${user}: ${details}`
     : `/${command} by ${user}`;
   addLog("command", message);

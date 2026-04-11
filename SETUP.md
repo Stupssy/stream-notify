@@ -425,20 +425,20 @@ Die WebUI zeigt in der **Konsole** alle Bot-Aktivitäten in Echtzeit:
 ## Architektur
 
 ```
-┌─────────────┐     POST /api/config      ┌──────────────────┐
+┌─────────────┐     POST /api/config       ┌──────────────────┐
 │   WebUI     │ ─────────────────────────→ │  Bot (Elysia)    │
 │  (React)    │ ←───────────────────────── │  Port 3001       │
-└─────────────┘    GET  /api/status       │                  │
-                                        │  /health          │
-┌─────────────┐     Every 5 min          │  /api/*           │
-│ cron-job.org│ ────────────────────────→│                  │
-└─────────────┘    /health               │                  │
-                                        │  ←─────→          │
-┌─────────────┐     Discord REST API    │  PostgreSQL       │
-│   Discord   │ ←───────────────────────┤  (app_config,     │
-└─────────────┘                         │   users tables)   │
-                                        │                  │
-┌─────────────┐     Twitch Helix API    └──────────────────┘
+└─────────────┘    GET  /api/status        │                  │
+                                           │  /health         │
+┌─────────────┐     Every 5 min            │  /api/*          │
+│ cron-job.org│ ────────────────────────→  │                  │
+└─────────────┘    /health                 │                  │
+                                           │  ←─────→         │
+┌─────────────┐     Discord REST API       │  PostgreSQL      │
+│   Discord   │ ←──────────────────────────┤  (app_config,    │
+└─────────────┘                            │   users tables)  │
+                                           │                  │
+┌─────────────┐     Twitch Helix API       └──────────────────┘
 │    Twitch   │ ←──────────────────────→
 └─────────────┘   OAuth2 Token Refresh
 ```

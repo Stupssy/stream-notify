@@ -1,9 +1,9 @@
-import { Elysia, t } from "elysia";
+import { Elysia } from "elysia";
 import { getConfig, saveConfig } from "./config";
 import { status, startBot, stopBot, restartBot, coldRestartBot } from "./bot";
 import { validateBotToken } from "./discord";
 import { restartGateway } from "./gateway";
-import { createSSEStream, getRecentLogs } from "./logger";
+import { getRecentLogs, registerSSEClient, unregisterSSEClient } from "./logger";
 
 function authCheck(apiKey: string | undefined): boolean {
   return apiKey === getConfig().apiKey;
@@ -115,16 +115,42 @@ export function createServer() {
     })
 
     // SSE endpoint for real-time log streaming
-    .get("/api/logs/stream", ({ query, headers, set }) => {
+    .get("/api/logs/stream", ({ query, headers }) => {
       const apiKey = (query as any).api_key ?? headers["x-api-key"];
       if (!authCheck(apiKey)) return new Response("Unauthorized", { status: 401 });
-      
-      set.headers["Content-Type"] = "text/event-stream";
-      set.headers["Cache-Control"] = "no-cache";
-      set.headers["Connection"] = "keep-alive";
-      set.headers["X-Accel-Buffering"] = "no"; // Disable nginx buffering
-      
-      return createSSEStream();
+
+      let controller: ReadableStreamDefaultController;
+
+      const stream = new ReadableStream({
+        start(c) {
+          controller = c;
+          const clientId = registerSSEClient(
+            (data) => {
+              try {
+                controller.enqueue(new TextEncoder().encode(data));
+              } catch {
+                unregisterSSEClient(clientId);
+              }
+            },
+            () => {
+              unregisterSSEClient(clientId);
+              try { controller.close(); } catch {}
+            }
+          );
+        },
+        cancel() {
+          // Client disconnected
+        }
+      });
+
+      return new Response(stream, {
+        headers: {
+          "Content-Type": "text/event-stream",
+          "Cache-Control": "no-cache",
+          "Connection": "keep-alive",
+          "X-Accel-Buffering": "no",
+        }
+      });
     })
 
     // Get recent logs (for initial load)
