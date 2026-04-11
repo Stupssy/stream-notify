@@ -27,8 +27,6 @@ export async function initDb(): Promise<void> {
 
     // Create tables if they don't exist
     await client.query(`
-      DROP TABLE IF EXISTS users;
-
       CREATE TABLE IF NOT EXISTS app_config (
         key TEXT PRIMARY KEY,
         value TEXT NOT NULL
