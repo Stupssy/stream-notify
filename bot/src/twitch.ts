@@ -9,24 +9,30 @@ async function fetchNewToken(): Promise<string> {
     throw new Error("Twitch Client ID / Secret not configured");
   }
 
-  const res = await fetch(
-    `https://id.twitch.tv/oauth2/token?client_id=${twitchClientId}&client_secret=${twitchClientSecret}&grant_type=client_credentials`,
-    { method: "POST" }
-  );
-
-  const data = await res.json();
-
-  if (!res.ok || !data.access_token) {
-    // e.g. { status: 400, message: "invalid client" }
-    throw new Error(
-      `Twitch OAuth failed (${res.status}): ${data.message ?? JSON.stringify(data)}`
+  const controller = new AbortController();
+  const id = setTimeout(() => controller.abort(), 10000);
+  try {
+    const res = await fetch(
+      `https://id.twitch.tv/oauth2/token?client_id=${twitchClientId}&client_secret=${twitchClientSecret}&grant_type=client_credentials`,
+      { method: "POST", signal: controller.signal }
     );
-  }
+    clearTimeout(id);
+    const data = await res.json();
 
-  accessToken = data.access_token;
-  tokenExpiry = Date.now() + (data.expires_in - 60) * 1000;
-  console.log(`[twitch] New access token fetched, expires in ${data.expires_in}s`);
-  return accessToken!;
+    if (!res.ok || !data.access_token) {
+      throw new Error(
+        `Twitch OAuth failed (${res.status}): ${data.message ?? JSON.stringify(data)}`
+      );
+    }
+
+    accessToken = data.access_token;
+    tokenExpiry = Date.now() + (data.expires_in - 60) * 1000;
+    console.log(`[twitch] New access token fetched, expires in ${data.expires_in}s`);
+    return accessToken!;
+  } catch (err: any) {
+    clearTimeout(id);
+    throw err;
+  }
 }
 
 async function getAccessToken(): Promise<string> {
@@ -52,45 +58,63 @@ export async function getStreamStatus(username: string): Promise<StreamInfo> {
   const { twitchClientId } = getConfig();
   const token = await getAccessToken();
 
-  const res = await fetch(
-    `https://api.twitch.tv/helix/streams?user_login=${encodeURIComponent(username)}`,
-    {
-      headers: {
-        "Client-Id": twitchClientId,
-        Authorization: `Bearer ${token}`,
-      },
-    }
-  );
-
-  // 401 = token expired/invalid → invalidate and retry once with a fresh token
-  if (res.status === 401) {
-    console.warn("[twitch] 401 on streams — invalidating token and retrying");
-    invalidateToken();
-    const freshToken = await fetchNewToken();
-    const retry = await fetch(
+  const controller = new AbortController();
+  const id = setTimeout(() => controller.abort(), 10000);
+  try {
+    const res = await fetch(
       `https://api.twitch.tv/helix/streams?user_login=${encodeURIComponent(username)}`,
       {
         headers: {
           "Client-Id": twitchClientId,
-          Authorization: `Bearer ${freshToken}`,
+          Authorization: `Bearer ${token}`,
         },
+        signal: controller.signal,
       }
     );
-    if (!retry.ok) {
-      const body = await retry.text().catch(() => retry.status.toString());
-      throw new Error(`Twitch streams API error after retry (${retry.status}): ${body}`);
+    clearTimeout(id);
+    
+    // 401 = token expired/invalid → invalidate and retry once with a fresh token
+    if (res.status === 401) {
+      console.warn("[twitch] 401 on streams — invalidating token and retrying");
+      invalidateToken();
+      const freshToken = await fetchNewToken();
+      const retryController = new AbortController();
+      const retryId = setTimeout(() => retryController.abort(), 10000);
+      try {
+        const retry = await fetch(
+          `https://api.twitch.tv/helix/streams?user_login=${encodeURIComponent(username)}`,
+          {
+            headers: {
+              "Client-Id": twitchClientId,
+              Authorization: `Bearer ${freshToken}`,
+            },
+            signal: retryController.signal,
+          }
+        );
+        clearTimeout(retryId);
+        if (!retry.ok) {
+          const body = await retry.text().catch(() => retry.status.toString());
+          throw new Error(`Twitch streams API error after retry (${retry.status}): ${body}`);
+        }
+        const retryData = await retry.json();
+        return parseStream(retryData);
+      } catch (err: any) {
+        clearTimeout(retryId);
+        throw err;
+      }
     }
-    const retryData = await retry.json();
-    return parseStream(retryData);
-  }
 
-  if (!res.ok) {
-    const body = await res.text().catch(() => res.status.toString());
-    throw new Error(`Twitch streams API error (${res.status}): ${body}`);
-  }
+    if (!res.ok) {
+      const body = await res.text().catch(() => res.status.toString());
+      throw new Error(`Twitch streams API error (${res.status}): ${body}`);
+    }
 
-  const data = await res.json();
-  return parseStream(data);
+    const data = await res.json();
+    return parseStream(data);
+  } catch (err: any) {
+    clearTimeout(id);
+    throw err;
+  }
 }
 
 function parseStream(data: any): StreamInfo {
@@ -113,34 +137,52 @@ export async function getUserInfo(username: string) {
   const { twitchClientId } = getConfig();
   const token = await getAccessToken();
 
-  const res = await fetch(
-    `https://api.twitch.tv/helix/users?login=${encodeURIComponent(username)}`,
-    {
-      headers: {
-        "Client-Id": twitchClientId,
-        Authorization: `Bearer ${token}`,
-      },
-    }
-  );
-
-  if (res.status === 401) {
-    invalidateToken();
-    const freshToken = await fetchNewToken();
-    const retry = await fetch(
+  const controller = new AbortController();
+  const id = setTimeout(() => controller.abort(), 10000);
+  try {
+    const res = await fetch(
       `https://api.twitch.tv/helix/users?login=${encodeURIComponent(username)}`,
       {
         headers: {
           "Client-Id": twitchClientId,
-          Authorization: `Bearer ${freshToken}`,
+          Authorization: `Bearer ${token}`,
         },
+        signal: controller.signal,
       }
     );
-    if (!retry.ok) return null;
-    const d = await retry.json();
-    return d.data?.[0] ?? null;
-  }
+    clearTimeout(id);
 
-  if (!res.ok) return null;
-  const data = await res.json();
-  return data.data?.[0] ?? null;
+    if (res.status === 401) {
+      invalidateToken();
+      const freshToken = await fetchNewToken();
+      const retryController = new AbortController();
+      const retryId = setTimeout(() => retryController.abort(), 10000);
+      try {
+        const retry = await fetch(
+          `https://api.twitch.tv/helix/users?login=${encodeURIComponent(username)}`,
+          {
+            headers: {
+              "Client-Id": twitchClientId,
+              Authorization: `Bearer ${freshToken}`,
+            },
+            signal: retryController.signal,
+          }
+        );
+        clearTimeout(retryId);
+        if (!retry.ok) return null;
+        const d = await retry.json();
+        return d.data?.[0] ?? null;
+      } catch (err: any) {
+        clearTimeout(retryId);
+        throw err;
+      }
+    }
+
+    if (!res.ok) return null;
+    const data = await res.json();
+    return data.data?.[0] ?? null;
+  } catch (err: any) {
+    clearTimeout(id);
+    throw err;
+  }
 }
