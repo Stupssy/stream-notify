@@ -132,7 +132,7 @@ async function tickUser(platform: string, username: string): Promise<void> {
     state.wasLive = stream.isLive;
   } catch (err: any) {
     status.lastError = err.message;
-    console.error(`[bot] tickUser error for ${twitchUsername}:`, err.message);
+    console.error(`[bot] tickUser error for ${username}:`, err.message);
   }
 }
 

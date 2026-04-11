@@ -137,27 +137,25 @@ export async function saveConfig(incoming: Partial<Config>): Promise<Config> {
   delete toSave.apiKey;
 
   try {
-    const values: string[] = [];
-    const queries: Promise<any>[] = [];
-
-    for (const [key, value] of Object.entries(toSave)) {
-      values.push(value != null ? String(value) : "");
-    }
-
-    // Build UPSERT queries
-    const keys = Object.keys(toSave) as (keyof Config)[];
-    for (let i = 0; i < keys.length; i++) {
-      const key = keys[i];
-      const value = toSave[key];
-      queries.push(
-        pool.query(
+    const client = await pool.connect();
+    try {
+      await client.query("BEGIN");
+      const keys = Object.keys(toSave) as (keyof Config)[];
+      for (let i = 0; i < keys.length; i++) {
+        const key = keys[i];
+        const value = toSave[key];
+        await client.query(
           "INSERT INTO app_config (key, value) VALUES ($1, $2) ON CONFLICT (key) DO UPDATE SET value = $2",
           [key, value != null ? String(value) : ""]
-        )
-      );
+        );
+      }
+      await client.query("COMMIT");
+    } catch (e) {
+      await client.query("ROLLBACK");
+      throw e;
+    } finally {
+      client.release();
     }
-
-    await Promise.all(queries);
   } catch (e: any) {
     console.warn(`[config] Could not write config to DB: ${e.message}`);
   }
