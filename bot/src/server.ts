@@ -1,5 +1,6 @@
 import { Elysia } from "elysia";
 import { getConfig, saveConfig } from "./config";
+import type { Config } from "./config";
 import { status, startBot, stopBot, restartBot, coldRestartBot } from "./bot";
 import { validateBotToken } from "./discord";
 import { restartGateway } from "./gateway";
@@ -76,6 +77,17 @@ export function createServer() {
       if (!authCheck(headers["x-api-key"])) return new Response("Unauthorized", { status: 401 });
       try {
         const imported = body as any;
+        // Validate: must have required non-secret fields
+        const requiredKeys: (keyof Config)[] = [
+          "discordGuildId", "discordChannelId", "twitchClientId",
+          "notifyMessage", "embedTitle", "offlineMessage", "offlineEmbedTitle",
+          "embedColor", "pollIntervalSeconds", "updateIntervalMinutes",
+        ];
+        for (const key of requiredKeys) {
+          if (imported[key] == null || imported[key] === "") {
+            return new Response(JSON.stringify({ ok: false, error: `Missing required field: ${key}` }), { status: 400 });
+          }
+        }
         delete imported.apiKey;
         await saveConfig(imported);
         restartBot();

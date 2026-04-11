@@ -43,21 +43,12 @@ export async function hasMemberRole(userId: string): Promise<boolean> {
   }
 }
 
-export async function getMemberByTwitchUsername(twitchUsername: string): Promise<string | null> {
-  const { discordGuildId } = getConfig();
-  
-  try {
-    const res = await fetchWithTimeout(
-      `${BASE}/guilds/${discordGuildId}/members/search?query=${twitchUsername}&limit=5`,
-      { headers: headers() }
-    );
-    if (!res.ok) return null;
-    const members = await res.json();
-    return members?.[0]?.user?.id ?? null;
-  } catch (error) {
-    console.error(`[discord] getMemberByTwitchUsername error for ${twitchUsername}:`, error.message);
-    return null;
-  }
+/**
+ * @deprecated Removed — Discord API doesn't support searching members by Twitch username.
+ * Kept for backwards compatibility, always returns null.
+ */
+export async function getMemberByTwitchUsername(_twitchUsername: string): Promise<string | null> {
+  return null;
 }
 
 /**
