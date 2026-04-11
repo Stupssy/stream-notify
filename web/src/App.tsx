@@ -411,6 +411,7 @@ function Console() {
   const [logs, setLogs] = useState<LogEntry[]>([]);
   const [filter, setFilter] = useState<"all" | "error" | "command" | "event">("all");
   const [autoScroll, setAutoScroll] = useState(true);
+  const [connected, setConnected] = useState(false);
   const consoleRef = useRef<HTMLDivElement>(null);
   const eventSourceRef = useRef<EventSource | null>(null);
 
@@ -426,11 +427,23 @@ function Console() {
     // Load initial logs
     botApi.getLogs().then((recentLogs) => {
       setLogs(recentLogs);
-    }).catch(() => {});
+    }).catch(() => {
+      // Add a system message if we can't fetch logs
+      setLogs([{
+        id: 0,
+        timestamp: new Date().toISOString(),
+        level: "info",
+        message: "Konsole verbunden — warte auf Logs..."
+      }]);
+    });
 
     // Connect to live stream
     const es = createLogStream();
     eventSourceRef.current = es;
+
+    es.onopen = () => {
+      setConnected(true);
+    };
 
     es.addEventListener("message", (event) => {
       try {
@@ -447,6 +460,7 @@ function Console() {
     });
 
     es.onerror = () => {
+      setConnected(false);
       console.warn("[console] SSE connection lost, reconnecting...");
       es.close();
       // Reconnect after 3 seconds
@@ -505,6 +519,7 @@ function Console() {
       <div className="card-header">
         <span>KONSOLE</span>
         <div className="header-actions">
+          <span className={`dot ${connected ? "dot-green" : "dot-red"}`} title={connected ? "Verbunden" : "Nicht verbunden"} />
           <button className="btn-xs" onClick={clearLogs} title="Konsole leeren">🗑 CLEAR</button>
           <button className={`btn-xs ${autoScroll ? "btn-xs-green" : ""}`} onClick={toggleAutoScroll} title="Auto-Scroll">
             {autoScroll ? "⬇ AUTO-SCROLL AN" : "⬇ AUTO-SCROLL AUS"}
