@@ -138,3 +138,7 @@ dist
 vite.config.js.timestamp-*
 vite.config.ts.timestamp-*
 web/package-lock.json
+
+.gemini/
+gha-creds-*.json
+.github/
