@@ -142,3 +142,4 @@ web/package-lock.json
 .gemini/
 gha-creds-*.json
 .github/
+.qwen/
