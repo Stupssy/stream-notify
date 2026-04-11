@@ -3,6 +3,7 @@ import {
   Routes,
   SlashCommandBuilder,
   PermissionFlagsBits,
+  MessageFlags,
   type ChatInputCommandInteraction,
 } from "discord.js";
 import { getConfig } from "./config";
@@ -109,7 +110,7 @@ async function handleSetup(interaction: ChatInputCommandInteraction): Promise<vo
     if (/\s/.test(twitchUsername) || twitchUsername.length < 3 || twitchUsername.length > 25) {
       await interaction.reply({
         content: "❌ Invalid Twitch username. Must be 3-25 characters, no spaces.",
-        ephemeral: true,
+        flags: MessageFlags.Ephemeral,
       });
       return;
     }
@@ -135,7 +136,7 @@ async function handleSetup(interaction: ChatInputCommandInteraction): Promise<vo
     const roleMsg = roleAssigned ? "\n✅ Streamer role assigned!" : "";
     await interaction.reply({
       content: `✅ Twitch username **${twitchUsername}** saved! You will now be monitored for live streams.${roleMsg}`,
-      ephemeral: true,
+      flags: MessageFlags.Ephemeral,
     });
   } else if (sub === "remove") {
     const removed = await removeUserByDiscordId(userId);
@@ -158,7 +159,7 @@ async function handleSetup(interaction: ChatInputCommandInteraction): Promise<vo
     if (!removed) {
       await interaction.reply({
         content: "❌ You have no Twitch configuration to remove.",
-        ephemeral: true,
+        flags: MessageFlags.Ephemeral,
       });
       return;
     }
@@ -166,20 +167,20 @@ async function handleSetup(interaction: ChatInputCommandInteraction): Promise<vo
     const roleMsg = roleRemoved ? "\n🔻 Streamer role removed." : "";
     await interaction.reply({
       content: `✅ Your Twitch configuration has been removed.${roleMsg}`,
-      ephemeral: true,
+      flags: MessageFlags.Ephemeral,
     });
   } else if (sub === "list") {
     const user = getUserByDiscordId(userId);
     if (!user) {
       await interaction.reply({
         content: "❌ You have no Twitch username configured. Use `/setup twitch <username>` to set one.",
-        ephemeral: true,
+        flags: MessageFlags.Ephemeral,
       });
       return;
     }
     await interaction.reply({
       content: `📺 Your configured Twitch username: **${user.twitchUsername}**`,
-      ephemeral: true,
+      flags: MessageFlags.Ephemeral,
     });
   }
 }
@@ -190,7 +191,7 @@ async function handleAdmin(interaction: ChatInputCommandInteraction): Promise<vo
   if (!member || !(member as any).permissions?.has(PermissionFlagsBits.ManageRoles)) {
     await interaction.reply({
       content: "❌ You need the **Manage Roles** permission to use this command.",
-      ephemeral: true,
+      flags: MessageFlags.Ephemeral,
     });
     return;
   }
@@ -200,7 +201,7 @@ async function handleAdmin(interaction: ChatInputCommandInteraction): Promise<vo
   if (sub === "list-all") {
     const users = getAllUsers();
     if (users.length === 0) {
-      await interaction.reply({ content: "📋 No users configured.", ephemeral: true });
+      await interaction.reply({ content: "📋 No users configured.", flags: MessageFlags.Ephemeral });
       return;
     }
     const lines = users.map(
@@ -208,7 +209,7 @@ async function handleAdmin(interaction: ChatInputCommandInteraction): Promise<vo
     );
     await interaction.reply({
       content: `📋 **Configured users (${users.length}):**\n${lines.join("\n")}`,
-      ephemeral: true,
+      flags: MessageFlags.Ephemeral,
     });
   } else if (sub === "remove-user") {
     const target = interaction.options.getUser("user", true);
@@ -230,14 +231,14 @@ async function handleAdmin(interaction: ChatInputCommandInteraction): Promise<vo
     if (!removed) {
       await interaction.reply({
         content: `❌ <@${target.id}> has no Twitch configuration.`,
-        ephemeral: true,
+        flags: MessageFlags.Ephemeral,
       });
       return;
     }
 
     await interaction.reply({
       content: `✅ <@${target.id}>'s Twitch configuration has been removed.`,
-      ephemeral: true,
+      flags: MessageFlags.Ephemeral,
     });
   }
 }
