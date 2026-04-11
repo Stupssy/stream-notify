@@ -1,7 +1,7 @@
 import { getConfig } from "./config";
 import { getAllUsernames } from "./users";
 import { getStreamStatus, getUserInfo, type StreamInfo } from "./twitch";
-import { sendNotification, updateNotification } from "./discord";
+import { sendNotification, updateNotification, sendOfflineNotification, updateToOfflineNotification } from "./discord";
 import { logEvent } from "./logger";
 
 export interface BotStatus {
@@ -97,10 +97,35 @@ async function tickUser(platform: string, username: string): Promise<void> {
         console.log(`[bot] Notification updated for ${username} (${Math.round(config.updateIntervalMinutes)}min interval)`);
       }
     } else if (!stream.isLive && state.wasLive) {
-      // ── Went offline → clear stored message ID ─────────────────────────────
+      // ── Went offline → update existing notification or send new offline message ──
       logEvent("⚫ OFFLINE", `${username} ended their stream on ${platform}`);
       console.log(`[bot] ${username} went offline on ${platform}`);
-      state.lastMessageId = null;
+
+      if (state.lastMessageId) {
+        // Update existing live message to show offline status
+        const success = await updateToOfflineNotification(
+          state.lastMessageId,
+          username,
+          state.cachedAvatarUrl
+        );
+        if (success) {
+          logEvent("✓ Offline Update", `Updated notification for ${username} (message ${state.lastMessageId})`);
+          console.log(`[bot] Offline notification updated ✓ for ${username} (message ${state.lastMessageId})`);
+        } else {
+          console.warn(`[bot] Failed to update offline notification for ${username}`);
+        }
+      } else {
+        // No existing message, send a new offline notification
+        const msgId = await sendOfflineNotification(username, state.cachedAvatarUrl);
+        if (msgId) {
+          state.lastMessageId = msgId;
+          logEvent("✓ Offline Notification", `Sent for ${username} (message ${msgId})`);
+          console.log(`[bot] Offline notification sent ✓ for ${username} (message ${msgId})`);
+        } else {
+          console.warn(`[bot] Failed to send offline notification for ${username}`);
+        }
+      }
+
       state.lastUpdateTime = 0;
     }
 

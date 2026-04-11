@@ -26,6 +26,8 @@ interface ConfigFormData {
   notifyMessage: string;
   embedColor: string;
   embedTitle: string;
+  offlineMessage: string;
+  offlineEmbedTitle: string;
   pollIntervalSeconds: number;
   updateIntervalMinutes: number;
   enabled: boolean;
@@ -327,10 +329,12 @@ function ConfigForm({ onSaved }: { onSaved: () => void }) {
         </>}
 
         {tab === "notify" && <>
-          <Field label="Nachricht" value={config.notifyMessage ?? ""} onChange={(v) => update("notifyMessage", v)} placeholder="{username} ist live!" />
-          <Field label="Embed Titel" value={config.embedTitle ?? ""} onChange={(v) => update("embedTitle", v)} />
+          <Field label="Live Nachricht" value={config.notifyMessage ?? ""} onChange={(v) => update("notifyMessage", v)} placeholder="{username} ist live!" />
+          <Field label="Live Embed Titel" value={config.embedTitle ?? ""} onChange={(v) => update("embedTitle", v)} />
+          <Field label="Offline Nachricht" value={config.offlineMessage ?? ""} onChange={(v) => update("offlineMessage", v)} placeholder="{username} ist jetzt offline." />
+          <Field label="Offline Embed Titel" value={config.offlineEmbedTitle ?? ""} onChange={(v) => update("offlineEmbedTitle", v)} />
           <Field label="Embed Farbe" value={config.embedColor ?? "#9146FF"} onChange={(v) => update("embedColor", v)} type="color" />
-          <p className="hint">Variablen: {"{username}"} {"{title}"} {"{game}"} {"{viewers}"}</p>
+          <p className="hint">Variablen (Live): {"{username}"} {"{title}"} {"{game}"} {"{viewers}"} | (Offline): {"{username}"}</p>
         </>}
 
         {tab === "bot" && <>

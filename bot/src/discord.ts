@@ -203,6 +203,127 @@ export async function updateNotification(
   }
 }
 
+/**
+ * Build an offline embed to notify that a streamer has gone offline.
+ */
+function buildOfflineEmbed(
+  twitchUsername: string,
+  twitchAvatarUrl: string | undefined,
+  config: ReturnType<typeof getConfig>
+) {
+  const { offlineMessage, embedColor, offlineEmbedTitle, discordNotifyRoleId } = config;
+
+  const fill = (s: string) =>
+    s
+      .replace(/\{username\}/g, twitchUsername);
+
+  const color = parseInt(embedColor.replace("#", ""), 16);
+  const streamUrl = `https://twitch.tv/${twitchUsername}`;
+
+  const fields = [
+    { name: "Status", value: "Offline", inline: true },
+  ];
+
+  const payload: Record<string, unknown> = {
+    allowed_mentions: discordNotifyRoleId
+      ? { roles: [discordNotifyRoleId] }
+      : { parse: [] },
+    embeds: [
+      {
+        author: {
+          name: twitchUsername,
+          url: streamUrl,
+          icon_url: twitchAvatarUrl ?? null,
+        },
+        title: fill(offlineEmbedTitle),
+        url: streamUrl,
+        color,
+        description: fill(offlineMessage),
+        fields,
+        footer: {
+          text: "stream-notify",
+          icon_url: "https://static.twitchscdn.net/assets/favicon-32-e29e246c157142c1.png",
+        },
+        timestamp: new Date().toISOString(),
+      },
+    ],
+  };
+
+  if (discordNotifyRoleId) payload.content = `<@&${discordNotifyRoleId}>`;
+  return payload;
+}
+
+/**
+ * Send a new offline notification. Returns Discord message ID for later edits, or null on failure.
+ */
+export async function sendOfflineNotification(
+  twitchUsername: string,
+  twitchAvatarUrl?: string
+): Promise<string | null> {
+  const config = getConfig();
+  if (!config.discordChannelId) return null;
+
+  const payload = buildOfflineEmbed(twitchUsername, twitchAvatarUrl, config);
+
+  try {
+    const res = await fetchWithTimeout(`${BASE}/channels/${config.discordChannelId}/messages`, {
+      method: "POST",
+      headers: headers(),
+      body: JSON.stringify(payload),
+    });
+
+    if (!res.ok) {
+      const err = await res.text().catch(() => res.status.toString());
+      console.error(`[discord] sendOfflineNotification failed (${res.status}): ${err}`);
+      return null;
+    }
+
+    const msg = await res.json();
+    return msg.id ?? null;
+  } catch (error) {
+    console.error("[discord] sendOfflineNotification error:", error.message);
+    return null;
+  }
+}
+
+/**
+ * Edit an existing live notification to show offline status.
+ * No re-ping — only the embed is patched.
+ */
+export async function updateToOfflineNotification(
+  messageId: string,
+  twitchUsername: string,
+  twitchAvatarUrl?: string
+): Promise<boolean> {
+  const config = getConfig();
+  if (!config.discordChannelId) return false;
+
+  const configNoPing = { ...config, discordNotifyRoleId: "" };
+  const payload = buildOfflineEmbed(twitchUsername, twitchAvatarUrl, configNoPing);
+
+  try {
+    const res = await fetchWithTimeout(
+      `${BASE}/channels/${config.discordChannelId}/messages/${messageId}`,
+      {
+        method: "PATCH",
+        headers: headers(),
+        body: JSON.stringify({ embeds: payload.embeds }),
+      }
+    );
+
+    if (!res.ok) {
+      const err = await res.text().catch(() => res.status.toString());
+      console.error(`[discord] updateToOfflineNotification failed (${res.status}): ${err}`);
+      return false;
+    }
+
+    return true;
+  } catch (error) {
+    console.error("[discord] updateToOfflineNotification error:", error.message);
+    return false;
+  }
+}
+
 export async function validateBotToken(): Promise<boolean> {
   try {
     const res = await fetchWithTimeout(`${BASE}/users/@me`, { headers: headers() });

@@ -14,6 +14,8 @@ export interface Config {
   notifyMessage: string;
   embedColor: string;
   embedTitle: string;
+  offlineMessage: string;
+  offlineEmbedTitle: string;
   // Bot settings
   pollIntervalSeconds: number;
   updateIntervalMinutes: number;
@@ -31,8 +33,10 @@ const defaults: Config = {
   twitchClientId: "",
   twitchClientSecret: "",
   notifyMessage: "🔴 **{username}** ist jetzt live auf Twitch!",
-  embedColor: "#9146FF",
   embedTitle: "{username} streamt jetzt!",
+  offlineMessage: "⚫ **{username}** ist jetzt offline.",
+  offlineEmbedTitle: "{username} ist nicht mehr live.",
+  embedColor: "#9146FF",
   pollIntervalSeconds: 60,
   updateIntervalMinutes: 5,
   enabled: false,
